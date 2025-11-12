@@ -1,0 +1,88 @@
+/* Admin Styles for AKS Integration Plugin */
+
+.aks-admin-content {
+    max-width: 900px;
+}
+
+.aks-info-box {
+    background: #f0f0f1;
+    border-left: 4px solid #2271b1;
+    padding: 20px;
+    margin-top: 30px;
+}
+
+.aks-info-box h3 {
+    margin-top: 0;
+    color: #1d2327;
+}
+
+.aks-info-box ol {
+    margin-left: 20px;
+}
+
+.aks-info-box li {
+    margin-bottom: 8px;
+}
+
+.form-table th {
+    width: 200px;
+}
+
+.form-table td p.description {
+    margin-top: 5px;
+    font-style: italic;
+    color: #646970;
+}
+
+/* Settings sections */
+h2.title {
+    border-bottom: 1px solid #c3c4c7;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}
+
+/* DocuSeal mappings table */
+#aks-docuseal-mappings table {
+    margin-top: 10px;
+}
+
+#aks-docuseal-mappings table th,
+#aks-docuseal-mappings table td {
+    padding: 8px 10px;
+}
+
+#aks-docuseal-mappings table input[type="text"] {
+    width: 100%;
+}
+
+/* WooCommerce Account Customization styles */
+.aks-wac-wrap {
+    margin-bottom: 20px;
+}
+
+.aks-wac-h2 {
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.aks-wac-panel {
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    padding: 20px;
+    border-radius: 4px;
+}
+
+.aks-guardian-form .form-row {
+    margin-bottom: 15px;
+}
+
+.aks-guardian-form label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 600;
+}
+
+.aks-guardian-form .input-text {
+    width: 100%;
+    max-width: 400px;
+}
