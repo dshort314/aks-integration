@@ -6,9 +6,32 @@
 
 class AKS_Integration_Admin_Menu {
     
+    private $sendpulse_admin;
+    private $docuseal_admin;
+    
     public function __construct() {
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_styles'));
+        
+        // Initialize admin classes early so their settings get registered
+        $this->init_admin_classes();
+    }
+    
+    /**
+     * Initialize admin classes
+     */
+    private function init_admin_classes() {
+        // Load and initialize SendPulse admin
+        if (file_exists(AKS_INTEGRATION_PLUGIN_DIR . 'includes/sendpulse/class-sendpulse-admin.php')) {
+            require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/sendpulse/class-sendpulse-admin.php';
+            $this->sendpulse_admin = AKS_SendPulse_Admin::get_instance();
+        }
+        
+        // Load and initialize DocuSeal admin
+        if (file_exists(AKS_INTEGRATION_PLUGIN_DIR . 'includes/docuseal/class-docuseal-admin.php')) {
+            require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/docuseal/class-docuseal-admin.php';
+            $this->docuseal_admin = AKS_DocuSeal_Admin::get_instance();
+        }
     }
     
     /**
@@ -86,9 +109,8 @@ class AKS_Integration_Admin_Menu {
      * Render SendPulse page
      */
     public function sendpulse_page() {
-        if (class_exists('AKS_SendPulse_Admin')) {
-            $sendpulse_admin = new AKS_SendPulse_Admin();
-            $sendpulse_admin->settings_page();
+        if ($this->sendpulse_admin && method_exists($this->sendpulse_admin, 'settings_page')) {
+            $this->sendpulse_admin->settings_page();
         } else {
             echo '<div class="wrap"><h1>SendPulse Settings</h1><p>SendPulse integration is not available.</p></div>';
         }
@@ -98,9 +120,8 @@ class AKS_Integration_Admin_Menu {
      * Render DocuSeal page
      */
     public function docuseal_page() {
-        if (class_exists('AKS_DocuSeal_Admin')) {
-            $docuseal_admin = new AKS_DocuSeal_Admin();
-            $docuseal_admin->settings_page();
+        if ($this->docuseal_admin && method_exists($this->docuseal_admin, 'settings_page')) {
+            $this->docuseal_admin->settings_page();
         } else {
             echo '<div class="wrap"><h1>DocuSeal Settings</h1><p>DocuSeal integration is not available.</p></div>';
         }

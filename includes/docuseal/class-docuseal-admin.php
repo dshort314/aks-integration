@@ -6,23 +6,41 @@
 
 class AKS_DocuSeal_Admin {
     
-    private $option_name = 'aks_docuseal_settings';
+    private $option_name = 'aks_docuseal_html_template';
+    private static $instance = null;
     
     public function __construct() {
         add_action('admin_init', array($this, 'register_settings'));
     }
     
     /**
+     * Get singleton instance
+     */
+    public static function get_instance() {
+        if (null === self::$instance) {
+            self::$instance = new self();
+        }
+        return self::$instance;
+    }
+    
+    /**
      * Register plugin settings
      */
     public function register_settings() {
+        // Register settings group
         register_setting(
             'aks_docuseal_settings_group',
-            $this->option_name,
+            'aks_docuseal_settings',
             array($this, 'sanitize_settings')
         );
         
-        // API Configuration Section
+        register_setting(
+            'aks_docuseal_settings_group',
+            $this->option_name,
+            array($this, 'sanitize_html')
+        );
+        
+        // API Token Section
         add_settings_section(
             'aks_docuseal_api_section',
             'API Configuration',
@@ -31,39 +49,31 @@ class AKS_DocuSeal_Admin {
         );
         
         add_settings_field(
-            'api_token',
+            'api_token_field',
             'DocuSeal API Token',
             array($this, 'api_token_callback'),
             'aks-docuseal',
             'aks_docuseal_api_section'
         );
         
-        // Form Mappings Section
-        add_settings_section(
-            'aks_docuseal_mappings_section',
-            'Form Mappings',
-            array($this, 'mappings_section_callback'),
-            'aks-docuseal'
-        );
-        
         add_settings_field(
-            'form_mappings',
-            'Gravity Form Mappings',
-            array($this, 'form_mappings_callback'),
+            'webhook_secret_field',
+            'Webhook Secret',
+            array($this, 'webhook_secret_callback'),
             'aks-docuseal',
-            'aks_docuseal_mappings_section'
+            'aks_docuseal_api_section'
         );
         
         // Template Section
         add_settings_section(
             'aks_docuseal_template_section',
             'HTML Template',
-            array($this, 'template_section_callback'),
+            array($this, 'section_callback'),
             'aks-docuseal'
         );
         
         add_settings_field(
-            'html_template',
+            'html_template_field',
             'Document Template',
             array($this, 'html_template_callback'),
             'aks-docuseal',
@@ -72,7 +82,7 @@ class AKS_DocuSeal_Admin {
     }
     
     /**
-     * Sanitize settings before saving
+     * Sanitize settings
      */
     public function sanitize_settings($input) {
         $sanitized = array();
@@ -81,58 +91,53 @@ class AKS_DocuSeal_Admin {
             $sanitized['api_token'] = sanitize_text_field($input['api_token']);
         }
         
-        if (isset($input['form_mappings'])) {
-            $sanitized['form_mappings'] = $input['form_mappings']; // Array of mappings
-        }
-        
-        if (isset($input['html_template'])) {
-            $sanitized['html_template'] = $this->sanitize_html($input['html_template']);
+        if (isset($input['webhook_secret'])) {
+            $sanitized['webhook_secret'] = sanitize_text_field($input['webhook_secret']);
         }
         
         return $sanitized;
     }
     
     /**
-     * Sanitize HTML - preserve HTML tags including custom DocuSeal tags
+     * Section description callback
      */
-    private function sanitize_html($input) {
-        // Get all allowed HTML tags from WordPress
-        $allowed_tags = wp_kses_allowed_html('post');
+    public function api_section_callback() {
+        echo '<p>Enter your DocuSeal API token and webhook secret.</p>';
+        echo '<p><a href="https://www.docuseal.com/settings/api" target="_blank">Get your DocuSeal API token here</a></p>';
         
-        // Add custom DocuSeal tags
-        $allowed_tags['radio-field'] = array(
-            'options' => true,
-            'style' => true,
-        );
-        
-        $allowed_tags['signature-field'] = array(
-            'style' => true,
-        );
-        
-        // Allow all standard HTML attributes for all tags
-        foreach ($allowed_tags as $tag => $attributes) {
-            $allowed_tags[$tag]['class'] = true;
-            $allowed_tags[$tag]['id'] = true;
-            $allowed_tags[$tag]['style'] = true;
-        }
-        
-        // Use wp_kses to sanitize while preserving allowed tags
-        return wp_kses($input, $allowed_tags);
+        // Display webhook URL
+        $webhook_url = rest_url('aks/v1/docuseal-webhook');
+        echo '<div style="background:#f0f0f1;padding:15px;margin-top:10px;border-left:4px solid #0073aa;">';
+        echo '<p><strong>Webhook URL:</strong></p>';
+        echo '<p><code style="background:#fff;padding:5px 10px;display:inline-block;font-size:13px;">' . esc_html($webhook_url) . '</code></p>';
+        echo '<p class="description">Copy this URL and add it to your DocuSeal webhook settings. Select the <strong>form.completed</strong> event.</p>';
+        echo '</div>';
     }
     
     /**
-     * Section callbacks
+     * API token field callback
      */
-    public function api_section_callback() {
-        echo '<p>Enter your DocuSeal API credentials.</p>';
-        echo '<p><a href="https://www.docuseal.com/settings/api" target="_blank">Get your DocuSeal API token here</a></p>';
+    public function api_token_callback() {
+        $settings = get_option('aks_docuseal_settings');
+        $value = isset($settings['api_token']) ? $settings['api_token'] : '';
+        echo '<input type="password" name="aks_docuseal_settings[api_token]" value="' . esc_attr($value) . '" class="regular-text" />';
+        echo '<p class="description">Your DocuSeal API authentication token</p>';
     }
     
-    public function mappings_section_callback() {
-        echo '<p>Configure which Gravity Forms should trigger DocuSeal document creation.</p>';
+    /**
+     * Webhook secret field callback
+     */
+    public function webhook_secret_callback() {
+        $settings = get_option('aks_docuseal_settings');
+        $value = isset($settings['webhook_secret']) ? $settings['webhook_secret'] : '';
+        echo '<input type="text" name="aks_docuseal_settings[webhook_secret]" value="' . esc_attr($value) . '" class="regular-text" />';
+        echo '<p class="description">Secret key for webhook signature verification. Configure the same secret in your DocuSeal webhook settings.</p>';
     }
     
-    public function template_section_callback() {
+    /**
+     * Section description callback
+     */
+    public function section_callback() {
         echo '<p>Edit the HTML template that will be used to create DocuSeal documents. Use the following placeholders:</p>';
         echo '<ul>';
         echo '<li><strong>STUDENT-LOOP</strong> - Will be replaced with student names and birthdates</li>';
@@ -142,96 +147,18 @@ class AKS_DocuSeal_Admin {
     }
     
     /**
-     * Field callbacks
+     * HTML template field callback
      */
-    public function api_token_callback() {
-        $options = get_option($this->option_name);
-        $value = isset($options['api_token']) ? $options['api_token'] : '';
-        echo '<input type="password" name="' . $this->option_name . '[api_token]" value="' . esc_attr($value) . '" class="regular-text" />';
-        echo '<p class="description">Your DocuSeal API authentication token</p>';
-    }
-    
-    public function form_mappings_callback() {
-        $options = get_option($this->option_name);
-        $mappings = isset($options['form_mappings']) ? $options['form_mappings'] : array();
-        
-        // Get all Gravity Forms
-        if (class_exists('GFAPI')) {
-            $forms = GFAPI::get_forms();
-            ?>
-            <div id="aks-docuseal-mappings">
-                <table class="widefat">
-                    <thead>
-                        <tr>
-                            <th>Form</th>
-                            <th>Enable DocuSeal</th>
-                            <th>First Name Field</th>
-                            <th>Last Name Field</th>
-                            <th>Email Field</th>
-                            <th>Student Entries Field</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($forms as $form): ?>
-                            <?php 
-                            $form_id = $form['id'];
-                            $mapping = isset($mappings[$form_id]) ? $mappings[$form_id] : array();
-                            ?>
-                            <tr>
-                                <td><?php echo esc_html($form['title']); ?></td>
-                                <td>
-                                    <input type="checkbox" 
-                                           name="<?php echo $this->option_name; ?>[form_mappings][<?php echo $form_id; ?>][enabled]" 
-                                           value="1" 
-                                           <?php checked(isset($mapping['enabled']) && $mapping['enabled']); ?> />
-                                </td>
-                                <td>
-                                    <input type="text" 
-                                           name="<?php echo $this->option_name; ?>[form_mappings][<?php echo $form_id; ?>][first_name_field]" 
-                                           value="<?php echo isset($mapping['first_name_field']) ? esc_attr($mapping['first_name_field']) : ''; ?>" 
-                                           class="small-text" />
-                                </td>
-                                <td>
-                                    <input type="text" 
-                                           name="<?php echo $this->option_name; ?>[form_mappings][<?php echo $form_id; ?>][last_name_field]" 
-                                           value="<?php echo isset($mapping['last_name_field']) ? esc_attr($mapping['last_name_field']) : ''; ?>" 
-                                           class="small-text" />
-                                </td>
-                                <td>
-                                    <input type="text" 
-                                           name="<?php echo $this->option_name; ?>[form_mappings][<?php echo $form_id; ?>][email_field]" 
-                                           value="<?php echo isset($mapping['email_field']) ? esc_attr($mapping['email_field']) : ''; ?>" 
-                                           class="small-text" />
-                                </td>
-                                <td>
-                                    <input type="text" 
-                                           name="<?php echo $this->option_name; ?>[form_mappings][<?php echo $form_id; ?>][students_field]" 
-                                           value="<?php echo isset($mapping['students_field']) ? esc_attr($mapping['students_field']) : ''; ?>" 
-                                           class="small-text" />
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-                <p class="description">Enter the field IDs for each form. For nested forms, use the parent field ID for the Student Entries Field.</p>
-            </div>
-            <?php
-        } else {
-            echo '<p>Gravity Forms is not available.</p>';
-        }
-    }
-    
     public function html_template_callback() {
-        $options = get_option($this->option_name);
-        $content = isset($options['html_template']) ? $options['html_template'] : $this->get_default_template();
+        $content = get_option($this->option_name, $this->get_default_template());
         
         wp_editor($content, 'aks_docuseal_html_template', array(
-            'textarea_name' => $this->option_name . '[html_template]',
+            'textarea_name' => $this->option_name,
             'textarea_rows' => 25,
             'media_buttons' => false,
             'teeny' => false,
-            'quicktags' => true,  // Enable text editor tab
-            'wpautop' => false,   // Don't auto-add paragraphs
+            'quicktags' => true,
+            'wpautop' => false,
             'tinymce' => array(
                 'toolbar1' => 'formatselect,bold,italic,underline,bullist,numlist,link,unlink,undo,redo',
                 'toolbar2' => '',
@@ -243,6 +170,30 @@ class AKS_DocuSeal_Admin {
         ));
         
         echo '<p class="description">You can switch to the "Text" tab to edit raw HTML and preserve custom DocuSeal tags like &lt;radio-field&gt; and &lt;signature-field&gt;.</p>';
+    }
+    
+    /**
+     * Sanitize HTML - preserve HTML tags including custom DocuSeal tags
+     */
+    public function sanitize_html($input) {
+        $allowed_tags = wp_kses_allowed_html('post');
+        
+        $allowed_tags['radio-field'] = array(
+            'options' => true,
+            'style' => true,
+        );
+        
+        $allowed_tags['signature-field'] = array(
+            'style' => true,
+        );
+        
+        foreach ($allowed_tags as $tag => $attributes) {
+            $allowed_tags[$tag]['class'] = true;
+            $allowed_tags[$tag]['id'] = true;
+            $allowed_tags[$tag]['style'] = true;
+        }
+        
+        return wp_kses($input, $allowed_tags);
     }
     
     /**
@@ -287,7 +238,6 @@ class AKS_DocuSeal_Admin {
             return;
         }
         
-        // Check if settings were saved
         if (isset($_GET['settings-updated'])) {
             add_settings_error(
                 'aks_docuseal_messages',
@@ -301,41 +251,13 @@ class AKS_DocuSeal_Admin {
         ?>
         <div class="wrap">
             <h1><?php echo esc_html('DocuSeal Integration Settings'); ?></h1>
-            
-            <div class="aks-admin-content">
-                <form method="post" action="options.php">
-                    <?php
-                    settings_fields('aks_docuseal_settings_group');
-                    do_settings_sections('aks-docuseal');
-                    submit_button('Save Settings');
-                    ?>
-                </form>
-                
-                <div class="aks-info-box">
-                    <h3>How DocuSeal Integration Works</h3>
-                    <ol>
-                        <li>Configure your DocuSeal API token above</li>
-                        <li>Enable DocuSeal for specific Gravity Forms and map the fields</li>
-                        <li>Customize the HTML template for your documents</li>
-                        <li>When a form is submitted:
-                            <ul>
-                                <li>A document is created from the HTML template</li>
-                                <li>Placeholders are replaced with form data</li>
-                                <li>The document is sent to the submitter for signing</li>
-                            </ul>
-                        </li>
-                    </ol>
-                    
-                    <h3>Field Mapping</h3>
-                    <p>Enter the field IDs from your Gravity Forms:</p>
-                    <ul>
-                        <li><strong>First Name Field</strong>: The field ID for first name (e.g., "27" or "1.3")</li>
-                        <li><strong>Last Name Field</strong>: The field ID for last name (e.g., "28" or "1.6")</li>
-                        <li><strong>Email Field</strong>: The field ID for email address</li>
-                        <li><strong>Student Entries Field</strong>: For nested forms, the parent field ID containing student entries</li>
-                    </ul>
-                </div>
-            </div>
+            <form action="options.php" method="post">
+                <?php
+                settings_fields('aks_docuseal_settings_group');
+                do_settings_sections('aks-docuseal');
+                submit_button('Save Settings');
+                ?>
+            </form>
         </div>
         <?php
     }

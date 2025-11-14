@@ -56,7 +56,7 @@ class AKS_Integration {
         // Load text domain
         load_plugin_textdomain('aks-integration', false, dirname(plugin_basename(AKS_INTEGRATION_PLUGIN_FILE)) . '/languages');
         
-        // Register user meta
+        // Register ALL user meta in one place
         $this->register_user_meta();
         
         // Load components
@@ -122,9 +122,21 @@ class AKS_Integration {
                 require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/docuseal/class-docuseal-admin.php';
             }
             
+            // Load webhook handler
+            if (file_exists(AKS_INTEGRATION_PLUGIN_DIR . 'includes/docuseal/class-docuseal-webhook-handler.php')) {
+                require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/docuseal/class-docuseal-webhook-handler.php';
+                new AKS_DocuSeal_Webhook_Handler();
+            }
+            
             new AKS_DocuSeal_Integration();
         }
         
+		/**
+		 * Load User Registration logic (updates entry with user ID + modifies confirmation redirect)
+		 */
+		require_once plugin_dir_path( __FILE__ ) . 'includes/class-aks-user-registration.php';
+
+
         // Load WooCommerce integration if WooCommerce is active
         if (class_exists('WooCommerce')) {
             if (file_exists(AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-woocommerce-account-customization.php')) {
@@ -135,9 +147,10 @@ class AKS_Integration {
     }
     
     /**
-     * Register user meta fields
+     * Register ALL user meta fields in one place
      */
     private function register_user_meta() {
+        // SendPulse/Quo CRM meta fields
         register_meta('user', 'sendpulse_contact_id', array(
             'type' => 'integer',
             'description' => 'SendPulse Contact ID',
@@ -179,17 +192,65 @@ class AKS_Integration {
             'single' => true,
             'show_in_rest' => false,
         ));
+        
+        // WooCommerce/Account meta fields
+        register_meta('user', 'sr_waiver_signed', array(
+            'type' => 'string',
+            'description' => 'Waiver Signed Status',
+            'single' => true,
+            'show_in_rest' => false,
+        ));
+        
+        register_meta('user', 'sr_guardian_email', array(
+            'type' => 'string',
+            'description' => 'Guardian Email',
+            'single' => true,
+            'show_in_rest' => false,
+        ));
+        
+        register_meta('user', 'sr_lesson_library_access', array(
+            'type' => 'string',
+            'description' => 'Lesson Library Access',
+            'single' => true,
+            'show_in_rest' => false,
+        ));
+        
+        register_meta('user', 'sr_store_credit_balance', array(
+            'type' => 'string',
+            'description' => 'Store Credit Balance',
+            'single' => true,
+            'show_in_rest' => false,
+        ));
+        
+        register_meta('user', 'sr_is_parent_guardian', array(
+            'type' => 'string',
+            'description' => 'Is Parent/Guardian',
+            'single' => true,
+            'show_in_rest' => false,
+        ));
+        
+        // DocuSeal meta field
+        register_meta('user', 'docuseal_url', array(
+            'type' => 'string',
+            'description' => 'DocuSeal Document URL',
+            'single' => true,
+            'show_in_rest' => false,
+        ));
     }
     
     /**
      * Display user profile fields
      */
     public function show_user_profile_fields($user) {
+        if (!current_user_can('edit_user', $user->ID)) {
+            return;
+        }
+        
         ?>
-        <h3>CRM Integration IDs</h3>
-        <table class="form-table">
+        <h2><?php esc_html_e('All Knox Swim – CRM Integration', 'aks-integration'); ?></h2>
+        <table class="form-table" role="presentation">
             <tr>
-                <th><label for="sendpulse_contact_id">SendPulse Contact ID</label></th>
+                <th><label for="sendpulse_contact_id"><?php esc_html_e('SendPulse Contact ID', 'aks-integration'); ?></label></th>
                 <td>
                     <input type="text" name="sendpulse_contact_id" id="sendpulse_contact_id" 
                            value="<?php echo esc_attr(get_user_meta($user->ID, 'sendpulse_contact_id', true)); ?>" 
@@ -197,7 +258,7 @@ class AKS_Integration {
                 </td>
             </tr>
             <tr>
-                <th><label for="sendpulse_user_id">SendPulse User ID</label></th>
+                <th><label for="sendpulse_user_id"><?php esc_html_e('SendPulse User ID', 'aks-integration'); ?></label></th>
                 <td>
                     <input type="text" name="sendpulse_user_id" id="sendpulse_user_id" 
                            value="<?php echo esc_attr(get_user_meta($user->ID, 'sendpulse_user_id', true)); ?>" 
@@ -205,7 +266,7 @@ class AKS_Integration {
                 </td>
             </tr>
             <tr>
-                <th><label for="sendpulse_phone_id">SendPulse Phone ID</label></th>
+                <th><label for="sendpulse_phone_id"><?php esc_html_e('SendPulse Phone ID', 'aks-integration'); ?></label></th>
                 <td>
                     <input type="text" name="sendpulse_phone_id" id="sendpulse_phone_id" 
                            value="<?php echo esc_attr(get_user_meta($user->ID, 'sendpulse_phone_id', true)); ?>" 
@@ -213,7 +274,7 @@ class AKS_Integration {
                 </td>
             </tr>
             <tr>
-                <th><label for="sendpulse_email_id">SendPulse Email ID</label></th>
+                <th><label for="sendpulse_email_id"><?php esc_html_e('SendPulse Email ID', 'aks-integration'); ?></label></th>
                 <td>
                     <input type="text" name="sendpulse_email_id" id="sendpulse_email_id" 
                            value="<?php echo esc_attr(get_user_meta($user->ID, 'sendpulse_email_id', true)); ?>" 
@@ -221,7 +282,7 @@ class AKS_Integration {
                 </td>
             </tr>
             <tr>
-                <th><label for="quo_contact_id">Quo Contact ID</label></th>
+                <th><label for="quo_contact_id"><?php esc_html_e('Quo Contact ID', 'aks-integration'); ?></label></th>
                 <td>
                     <input type="text" name="quo_contact_id" id="quo_contact_id" 
                            value="<?php echo esc_attr(get_user_meta($user->ID, 'quo_contact_id', true)); ?>" 
@@ -229,10 +290,67 @@ class AKS_Integration {
                 </td>
             </tr>
             <tr>
-                <th><label for="quo_phone_id">Quo Phone ID</label></th>
+                <th><label for="quo_phone_id"><?php esc_html_e('Quo Phone ID', 'aks-integration'); ?></label></th>
                 <td>
                     <input type="text" name="quo_phone_id" id="quo_phone_id" 
                            value="<?php echo esc_attr(get_user_meta($user->ID, 'quo_phone_id', true)); ?>" 
+                           class="regular-text" />
+                </td>
+            </tr>
+        </table>
+        
+        <h2><?php esc_html_e('All Knox Swim – Account Meta', 'aks-integration'); ?></h2>
+        <table class="form-table" role="presentation">
+            <tr>
+                <th><label for="sr_waiver_signed"><?php esc_html_e('Waiver Signed', 'aks-integration'); ?></label></th>
+                <td>
+                    <select name="sr_waiver_signed" id="sr_waiver_signed">
+                        <option value="no"  <?php selected(get_user_meta($user->ID, 'sr_waiver_signed', true), 'no'); ?>><?php esc_html_e('No', 'aks-integration'); ?></option>
+                        <option value="yes" <?php selected(get_user_meta($user->ID, 'sr_waiver_signed', true), 'yes'); ?>><?php esc_html_e('Yes', 'aks-integration'); ?></option>
+                    </select>
+                </td>
+            </tr>
+            
+            <tr>
+                <th><label for="sr_is_parent_guardian"><?php esc_html_e('Is Parent/Guardian', 'aks-integration'); ?></label></th>
+                <td>
+                    <?php $is_parent = get_user_meta($user->ID, 'sr_is_parent_guardian', true); ?>
+                    <?php if ($is_parent === '') $is_parent = 'yes'; ?>
+                    <select name="sr_is_parent_guardian" id="sr_is_parent_guardian">
+                        <option value="no"  <?php selected($is_parent, 'no'); ?>><?php esc_html_e('No', 'aks-integration'); ?></option>
+                        <option value="yes" <?php selected($is_parent, 'yes'); ?>><?php esc_html_e('Yes', 'aks-integration'); ?></option>
+                    </select>
+                </td>
+            </tr>
+            
+            <tr>
+                <th><label for="sr_guardian_email"><?php esc_html_e('Guardian Email', 'aks-integration'); ?></label></th>
+                <td><input type="text" name="sr_guardian_email" id="sr_guardian_email" value="<?php echo esc_attr(get_user_meta($user->ID, 'sr_guardian_email', true)); ?>" class="regular-text"></td>
+            </tr>
+            
+            <tr>
+                <th><label for="sr_lesson_library_access"><?php esc_html_e('Lesson Library Access', 'aks-integration'); ?></label></th>
+                <td>
+                    <select name="sr_lesson_library_access" id="sr_lesson_library_access">
+                        <option value="no"  <?php selected(get_user_meta($user->ID, 'sr_lesson_library_access', true), 'no'); ?>><?php esc_html_e('No', 'aks-integration'); ?></option>
+                        <option value="yes" <?php selected(get_user_meta($user->ID, 'sr_lesson_library_access', true), 'yes'); ?>><?php esc_html_e('Yes', 'aks-integration'); ?></option>
+                    </select>
+                </td>
+            </tr>
+            
+            <tr>
+                <th><label for="sr_store_credit_balance"><?php esc_html_e('Store Credit Balance', 'aks-integration'); ?></label></th>
+                <td>
+                    <?php $credit = get_user_meta($user->ID, 'sr_store_credit_balance', true); ?>
+                    <input type="number" step="0.01" min="0" name="sr_store_credit_balance" id="sr_store_credit_balance" value="<?php echo esc_attr($credit !== '' ? $credit : '0.00'); ?>" class="regular-text">
+                </td>
+            </tr>
+            
+            <tr>
+                <th><label for="docuseal_url"><?php esc_html_e('DocuSeal Document URL', 'aks-integration'); ?></label></th>
+                <td>
+                    <input type="url" name="docuseal_url" id="docuseal_url" 
+                           value="<?php echo esc_attr(get_user_meta($user->ID, 'docuseal_url', true)); ?>" 
                            class="regular-text" />
                 </td>
             </tr>
@@ -245,7 +363,7 @@ class AKS_Integration {
      */
     public function save_user_profile_fields($user_id) {
         if (!current_user_can('edit_user', $user_id)) {
-            return false;
+            return;
         }
         
         $fields = array(
@@ -254,13 +372,25 @@ class AKS_Integration {
             'sendpulse_phone_id',
             'sendpulse_email_id',
             'quo_contact_id',
-            'quo_phone_id'
+            'quo_phone_id',
+            'docuseal_url'
         );
         
         foreach ($fields as $field) {
             if (isset($_POST[$field])) {
                 update_user_meta($user_id, $field, sanitize_text_field($_POST[$field]));
             }
+        }
+        
+        // Handle yes/no fields
+        update_user_meta($user_id, 'sr_waiver_signed', isset($_POST['sr_waiver_signed']) ? ($_POST['sr_waiver_signed'] === 'yes' ? 'yes' : 'no') : 'no');
+        update_user_meta($user_id, 'sr_is_parent_guardian', isset($_POST['sr_is_parent_guardian']) ? ($_POST['sr_is_parent_guardian'] === 'yes' ? 'yes' : 'no') : 'yes');
+        update_user_meta($user_id, 'sr_guardian_email', isset($_POST['sr_guardian_email']) ? sanitize_text_field($_POST['sr_guardian_email']) : '');
+        update_user_meta($user_id, 'sr_lesson_library_access', isset($_POST['sr_lesson_library_access']) ? ($_POST['sr_lesson_library_access'] === 'yes' ? 'yes' : 'no') : 'no');
+        
+        if (isset($_POST['sr_store_credit_balance'])) {
+            $val = floatval($_POST['sr_store_credit_balance']);
+            update_user_meta($user_id, 'sr_store_credit_balance', $val);
         }
     }
     
@@ -281,9 +411,7 @@ class AKS_Integration {
         }
         
         $docuseal_defaults = array(
-            'api_token' => '',
-            'form_mappings' => array(),
-            'html_template' => ''
+            'api_token' => ''
         );
         
         if (!get_option('aks_docuseal_settings')) {

@@ -24,7 +24,7 @@ class AKS_WooCommerce_Account_Customization {
 
     // User meta keys
     const META_WAIVER_SIGNED       = 'sr_waiver_signed';
-    const META_GUARDIAN_EMAIL     = 'sr_guardian_email';
+    const META_GUARDIAN_EMAIL      = 'sr_guardian_email';
     const META_LIBRARY_ACCESS      = 'sr_lesson_library_access';
     const META_STORE_CREDIT        = 'sr_store_credit_balance';
     const META_IS_PARENT_GUARDIAN  = 'sr_is_parent_guardian';
@@ -47,12 +47,6 @@ class AKS_WooCommerce_Account_Customization {
         // Woo menu + rendering
         add_filter('woocommerce_account_menu_items', array($this, 'filter_account_menu'), 99);
         $this->attach_endpoint_renderers();
-        
-        // Admin user profile meta fields
-        add_action('show_user_profile', array($this, 'admin_user_fields'));
-        add_action('edit_user_profile', array($this, 'admin_user_fields'));
-        add_action('personal_options_update', array($this, 'save_admin_user_fields'));
-        add_action('edit_user_profile_update', array($this, 'save_admin_user_fields'));
         
         // Frontend document actions
         add_action('init', array($this, 'handle_guardian_invite'));
@@ -209,6 +203,7 @@ class AKS_WooCommerce_Account_Customization {
             $is_parent = 'yes';
         }
         $guardian_email = get_user_meta($user_id, self::META_GUARDIAN_EMAIL, true);
+        $docuseal_url = get_user_meta($user_id, 'docuseal_url', true);
         $need_waiver = isset($_GET['need_waiver']);
         
         $this->heading(
@@ -218,55 +213,53 @@ class AKS_WooCommerce_Account_Customization {
         
         echo '<div class="aks-wac-grid">';
         
-        // Waiver Status Card
+        // Waiver Link Card
         echo '<div class="aks-wac-card">';
-        echo '<h3>' . esc_html__('Waiver Status', 'aks-integration') . '</h3>';
-        echo '<p>' . ($waiver_signed ? esc_html__('✓ Signed', 'aks-integration') : esc_html__('Not Signed', 'aks-integration')) . '</p>';
-        if (!$waiver_signed) {
-            echo '<p><a class="button" href="#">' . esc_html__('Open Waiver', 'aks-integration') . '</a></p>';
+        if (!$waiver_signed && !empty($docuseal_url)) {
+            echo '<h3>' . esc_html__('Waiver Required', 'aks-integration') . '</h3>';
+            echo '<p><a href="' . esc_url($docuseal_url) . '" target="_blank" class="button">' . esc_html__('Sign Waiver Here', 'aks-integration') . '</a></p>';
+        } elseif ($waiver_signed && !empty($docuseal_url)) {
+            echo '<h3>' . esc_html__('Waiver Completed', 'aks-integration') . '</h3>';
+            echo '<p><a href="' . esc_url($docuseal_url) . '" target="_blank" class="button">' . esc_html__('View Completed Waiver', 'aks-integration') . '</a></p>';
+        } else {
+            echo '<h3>' . esc_html__('Waiver Status', 'aks-integration') . '</h3>';
+            echo '<p>' . ($waiver_signed ? esc_html__('✓ Signed', 'aks-integration') : esc_html__('Not Signed', 'aks-integration')) . '</p>';
         }
         echo '</div>';
         
-        // Guardian Invite Card
-        echo '<div class="aks-wac-card">';
-        echo '<h3>' . esc_html__('Not the Parent/Guardian?', 'aks-integration') . '</h3>';
-        echo '<p>' . esc_html__('If you are not the parent/guardian, invite the correct guardian to sign.', 'aks-integration') . '</p>';
-        
-        if ($guardian_email) {
-            echo '<p><strong>' . esc_html__('Guardian Email:', 'aks-integration') . '</strong> ' . esc_html($guardian_email) . '</p>';
+        // Guardian Invite Card - Only show if NOT parent/guardian
+        if ($is_parent === 'no') {
+            echo '<div class="aks-wac-card">';
+            echo '<h3>' . esc_html__('Not the Parent/Guardian?', 'aks-integration') . '</h3>';
+            echo '<p>' . esc_html__('If you are not the parent/guardian, invite the correct guardian to sign.', 'aks-integration') . '</p>';
+            
+            if ($guardian_email) {
+                echo '<p><strong>' . esc_html__('Guardian Email:', 'aks-integration') . '</strong> ' . esc_html($guardian_email) . '</p>';
+            }
+            
+            echo '<form method="post">';
+            wp_nonce_field('aks_guardian_invite', 'aks_guardian_invite_nonce');
+            
+            echo '<div class="aks-guardian-fields">';
+            echo '<p>';
+            echo '<label>';
+            echo '<input type="checkbox" name="sr_is_parent_guardian" value="yes" ' . checked($is_parent, 'yes', false) . ' /> ';
+            echo esc_html__('I am the parent/guardian', 'aks-integration');
+            echo '</label>';
+            echo '</p>';
+            
+            echo '<p>';
+            echo '<label for="sr_guardian_email">' . esc_html__('Guardian Email', 'aks-integration') . '</label>';
+            echo '<input type="email" name="sr_guardian_email" id="sr_guardian_email" value="' . esc_attr($guardian_email) . '" class="input-text" />';
+            echo '</p>';
+            
+            echo '<p>';
+            echo '<button type="submit" name="aks_send_guardian_invite" class="button">' . esc_html__('Send Guardian Invite', 'aks-integration') . '</button>';
+            echo '</p>';
+            echo '</div>';
+            echo '</form>';
+            echo '</div>';
         }
-        
-        echo '<form method="post">';
-        wp_nonce_field('aks_guardian_invite', 'aks_guardian_invite_nonce');
-        
-        echo '<div class="aks-guardian-fields">';
-        echo '<p>';
-        echo '<label>';
-        echo '<input type="checkbox" name="sr_is_parent_guardian" value="yes" ' . checked($is_parent, 'yes', false) . ' /> ';
-        echo esc_html__('I am the parent/guardian', 'aks-integration');
-        echo '</label>';
-        echo '</p>';
-        
-        echo '<p>';
-        echo '<label for="sr_guardian_email">' . esc_html__('Guardian Email', 'aks-integration') . '</label>';
-        echo '<input type="email" name="sr_guardian_email" id="sr_guardian_email" value="' . esc_attr($guardian_email) . '" class="input-text" />';
-        echo '</p>';
-        
-        echo '<p>';
-        echo '<button type="submit" name="aks_send_guardian_invite" class="button">' . esc_html__('Send Guardian Invite', 'aks-integration') . '</button>';
-        echo '</p>';
-        echo '</div>';
-        echo '</form>';
-        echo '</div>';
-        
-        // Documents Card  
-        echo '<div class="aks-wac-card">';
-        echo '<h3>' . esc_html__('Documents', 'aks-integration') . '</h3>';
-        echo '<ul>';
-        echo '<li><a href="#">' . esc_html__('View Signed Waiver', 'aks-integration') . '</a></li>';
-        echo '<li><a href="#">' . esc_html__('Swimming Policy', 'aks-integration') . '</a></li>';
-        echo '</ul>';
-        echo '</div>';
         
         echo '</div>'; // End grid
         
@@ -398,85 +391,6 @@ class AKS_WooCommerce_Account_Customization {
      */
     private function has_signed_waiver($user_id) {
         return get_user_meta($user_id, self::META_WAIVER_SIGNED, true) === 'yes';
-    }
-    
-    /**
-     * Admin: User Profile meta UI
-     */
-    public function admin_user_fields($user) {
-        if (!current_user_can('edit_user', $user->ID)) {
-            return;
-        }
-        
-        $waiver = get_user_meta($user->ID, self::META_WAIVER_SIGNED, true);
-        $is_parent = get_user_meta($user->ID, self::META_IS_PARENT_GUARDIAN, true);
-        if ($is_parent === '') {
-            $is_parent = 'yes';
-        }
-        $emails = get_user_meta($user->ID, self::META_GUARDIAN_EMAIL, true);
-        $library = get_user_meta($user->ID, self::META_LIBRARY_ACCESS, true);
-        $credit = get_user_meta($user->ID, self::META_STORE_CREDIT, true);
-        
-        ?>
-        <h2><?php esc_html_e('All Knox Swim – Account Meta', 'aks-integration'); ?></h2>
-        <table class="form-table" role="presentation">
-            <tr>
-                <th><label for="sr_waiver_signed"><?php esc_html_e('Waiver Signed', 'aks-integration'); ?></label></th>
-                <td>
-                    <select name="sr_waiver_signed" id="sr_waiver_signed">
-                        <option value="no"  <?php selected($waiver, 'no'); ?>><?php esc_html_e('No', 'aks-integration'); ?></option>
-                        <option value="yes" <?php selected($waiver, 'yes'); ?>><?php esc_html_e('Yes', 'aks-integration'); ?></option>
-                    </select>
-                </td>
-            </tr>
-            
-            <tr>
-                <th><label for="sr_is_parent_guardian"><?php esc_html_e('Is Parent/Guardian', 'aks-integration'); ?></label></th>
-                <td>
-                    <select name="sr_is_parent_guardian" id="sr_is_parent_guardian">
-                        <option value="no"  <?php selected($is_parent, 'no'); ?>><?php esc_html_e('No', 'aks-integration'); ?></option>
-                        <option value="yes" <?php selected($is_parent, 'yes'); ?>><?php esc_html_e('Yes', 'aks-integration'); ?></option>
-                    </select>
-                </td>
-            </tr>
-            
-            <tr>
-                <th><label for="sr_guardian_email"><?php esc_html_e('Guardian Email', 'aks-integration'); ?></label></th>
-                <td><input type="text" name="sr_guardian_email" id="sr_guardian_email" value="<?php echo esc_attr($emails); ?>" class="regular-text"></td>
-            </tr>
-            
-            <tr>
-                <th><label for="sr_lesson_library_access"><?php esc_html_e('Lesson Library Access', 'aks-integration'); ?></label></th>
-                <td>
-                    <select name="sr_lesson_library_access" id="sr_lesson_library_access">
-                        <option value="no"  <?php selected($library, 'no'); ?>><?php esc_html_e('No', 'aks-integration'); ?></option>
-                        <option value="yes" <?php selected($library, 'yes'); ?>><?php esc_html_e('Yes', 'aks-integration'); ?></option>
-                    </select>
-                </td>
-            </tr>
-            
-            <tr>
-                <th><label for="sr_store_credit_balance"><?php esc_html_e('Store Credit Balance', 'aks-integration'); ?></label></th>
-                <td><input type="number" step="0.01" min="0" name="sr_store_credit_balance" id="sr_store_credit_balance" value="<?php echo esc_attr($credit !== '' ? $credit : '0.00'); ?>" class="regular-text"></td>
-            </tr>
-        </table>
-        <?php
-    }
-    
-    public function save_admin_user_fields($user_id) {
-        if (!current_user_can('edit_user', $user_id)) {
-            return;
-        }
-        
-        update_user_meta($user_id, self::META_WAIVER_SIGNED, isset($_POST['sr_waiver_signed']) ? ($_POST['sr_waiver_signed'] === 'yes' ? 'yes' : 'no') : 'no');
-        update_user_meta($user_id, self::META_IS_PARENT_GUARDIAN, isset($_POST['sr_is_parent_guardian']) ? ($_POST['sr_is_parent_guardian'] === 'yes' ? 'yes' : 'no') : 'yes');
-        update_user_meta($user_id, self::META_GUARDIAN_EMAIL, isset($_POST['sr_guardian_email']) ? sanitize_text_field($_POST['sr_guardian_email']) : '');
-        update_user_meta($user_id, self::META_LIBRARY_ACCESS, isset($_POST['sr_lesson_library_access']) ? ($_POST['sr_lesson_library_access'] === 'yes' ? 'yes' : 'no') : 'no');
-        
-        if (isset($_POST['sr_store_credit_balance'])) {
-            $val = floatval($_POST['sr_store_credit_balance']);
-            update_user_meta($user_id, self::META_STORE_CREDIT, $val);
-        }
     }
     
     /**
