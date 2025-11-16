@@ -194,6 +194,13 @@ class AKS_Integration {
         ));
         
         // WooCommerce/Account meta fields
+        register_meta('user', 'sr_registration_form_complete', array(
+            'type' => 'string',
+            'description' => 'Registration Form 2 Complete',
+            'single' => true,
+            'show_in_rest' => false,
+        ));
+        
         register_meta('user', 'sr_waiver_signed', array(
             'type' => 'string',
             'description' => 'Waiver Signed Status',
@@ -302,6 +309,18 @@ class AKS_Integration {
         <h2><?php esc_html_e('All Knox Swim – Account Meta', 'aks-integration'); ?></h2>
         <table class="form-table" role="presentation">
             <tr>
+                <th><label for="sr_registration_form_complete"><?php esc_html_e('Registration Form 2 Complete', 'aks-integration'); ?></label></th>
+                <td>
+                    <?php $form_complete = get_user_meta($user->ID, 'sr_registration_form_complete', true); ?>
+                    <?php if ($form_complete === '') $form_complete = 'no'; ?>
+                    <select name="sr_registration_form_complete" id="sr_registration_form_complete">
+                        <option value="no"  <?php selected($form_complete, 'no'); ?>><?php esc_html_e('No', 'aks-integration'); ?></option>
+                        <option value="yes" <?php selected($form_complete, 'yes'); ?>><?php esc_html_e('Yes', 'aks-integration'); ?></option>
+                    </select>
+                </td>
+            </tr>
+            
+            <tr>
                 <th><label for="sr_waiver_signed"><?php esc_html_e('Waiver Signed', 'aks-integration'); ?></label></th>
                 <td>
                     <select name="sr_waiver_signed" id="sr_waiver_signed">
@@ -383,6 +402,7 @@ class AKS_Integration {
         }
         
         // Handle yes/no fields
+        update_user_meta($user_id, 'sr_registration_form_complete', isset($_POST['sr_registration_form_complete']) ? ($_POST['sr_registration_form_complete'] === 'yes' ? 'yes' : 'no') : 'no');
         update_user_meta($user_id, 'sr_waiver_signed', isset($_POST['sr_waiver_signed']) ? ($_POST['sr_waiver_signed'] === 'yes' ? 'yes' : 'no') : 'no');
         update_user_meta($user_id, 'sr_is_parent_guardian', isset($_POST['sr_is_parent_guardian']) ? ($_POST['sr_is_parent_guardian'] === 'yes' ? 'yes' : 'no') : 'yes');
         update_user_meta($user_id, 'sr_guardian_email', isset($_POST['sr_guardian_email']) ? sanitize_text_field($_POST['sr_guardian_email']) : '');
@@ -427,8 +447,7 @@ class AKS_Integration {
                 'videos',
                 'purchases',
                 'store-credit',
-                'announcements',
-                'delete-account'
+                'announcements'
             );
             
             foreach ($endpoints as $endpoint) {

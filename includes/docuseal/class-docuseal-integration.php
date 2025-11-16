@@ -98,6 +98,10 @@ class AKS_DocuSeal_Integration {
             // Update billing address from form data if user exists
             if ($user_id) {
                 $this->update_user_billing_address($user_id, $entry);
+                
+                // Set Registration Form 2 Complete to "Yes"
+                update_user_meta($user_id, 'sr_registration_form_complete', 'yes');
+                error_log('DocuSeal: Set sr_registration_form_complete to yes for user ' . $user_id);
             }
             
             // Get nested form entries (Students) from field 21

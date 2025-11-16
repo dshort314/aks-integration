@@ -19,7 +19,6 @@ class AKS_WooCommerce_Account_Customization {
         'purchases'      => 'purchases',
         'store_credit'   => 'store-credit',
         'announcements'  => 'announcements',
-        'delete_account' => 'delete-account',
     ];
 
     // User meta keys
@@ -72,7 +71,6 @@ class AKS_WooCommerce_Account_Customization {
         add_action('woocommerce_account_' . $this->endpoints['purchases'] . '_endpoint', array($this, 'render_purchases'));
         add_action('woocommerce_account_' . $this->endpoints['store_credit'] . '_endpoint', array($this, 'render_store_credit'));
         add_action('woocommerce_account_' . $this->endpoints['announcements'] . '_endpoint', array($this, 'render_announcements'));
-        add_action('woocommerce_account_' . $this->endpoints['delete_account'] . '_endpoint', array($this, 'render_delete_account'));
     }
     
     /**
@@ -99,14 +97,13 @@ class AKS_WooCommerce_Account_Customization {
         $new[$this->endpoints['documents']]      = __('Waiver & Documents', 'aks-integration');
         $new[$this->endpoints['videos']]         = __('Videos', 'aks-integration');
         $new[$this->endpoints['purchases']]      = __('Purchases', 'aks-integration');
-        $new['edit-address']                      = __('Addresses', 'woocommerce');
-        $new['payment-methods']                   = __('Payment Methods', 'woocommerce');
-        $new['edit-account']                      = __('Profile', 'aks-integration');
+        $new['edit-address']                     = __('Addresses', 'woocommerce');
+        $new['payment-methods']                  = __('Payment Methods', 'woocommerce');
+        $new['edit-account']                     = __('Profile', 'aks-integration');
         $new[$this->endpoints['store_credit']]   = __('Store Credit', 'aks-integration');
-        $new['customer-logout']                   = __('Logout', 'woocommerce');
-        $new[$this->endpoints['delete_account']] = __('Delete Account', 'aks-integration');
+        $new['customer-logout']                  = __('Logout', 'woocommerce');
         
-        // Remove originals we've consolidated
+        // Remove originals we've consolidated and Delete Account
         unset($items['orders'], $items['downloads']);
         
         return $new;
@@ -176,9 +173,16 @@ class AKS_WooCommerce_Account_Customization {
     }
     
     public function render_lessons() {
-        $this->heading(__('Lessons', 'aks-integration'), __('Manage your swim lessons and bookings.', 'aks-integration'));
-        
         $user_id = get_current_user_id();
+
+        // Registration Form 2 gating
+        $this->maybe_redirect_if_registration_incomplete($user_id);
+
+        $this->heading(
+            __('Lessons', 'aks-integration'),
+            __('Manage your swim lessons and bookings.', 'aks-integration')
+        );
+        
         $waiver_signed = $this->has_signed_waiver($user_id);
         
         if (!$waiver_signed) {
@@ -197,6 +201,10 @@ class AKS_WooCommerce_Account_Customization {
     
     public function render_documents() {
         $user_id = get_current_user_id();
+
+        // Registration Form 2 gating
+        $this->maybe_redirect_if_registration_incomplete($user_id);
+
         $waiver_signed = $this->has_signed_waiver($user_id);
         $is_parent = get_user_meta($user_id, self::META_IS_PARENT_GUARDIAN, true);
         if ($is_parent === '') {
@@ -277,17 +285,12 @@ class AKS_WooCommerce_Account_Customization {
     public function render_videos() {
         $this->heading(__('Videos', 'aks-integration'));
         
-        $user_id = get_current_user_id();
-        $has_access = get_user_meta($user_id, self::META_LIBRARY_ACCESS, true) === 'yes';
-        
-        if (!$has_access) {
-            echo '<div class="woocommerce-message woocommerce-message--info">';
-            echo '<p>' . esc_html__('You do not currently have access to the video library.', 'aks-integration') . '</p>';
-            echo '</div>';
-            return;
-        }
-        
+        // ALL logged in users have access to videos
         echo '<p>' . esc_html__('Access your swim lesson videos here.', 'aks-integration') . '</p>';
+        
+        // You can add your video content or shortcode here
+        // For example:
+        // echo do_shortcode('[your_video_library_shortcode]');
     }
     
     public function render_purchases() {
@@ -381,16 +384,51 @@ class AKS_WooCommerce_Account_Customization {
         </style>';
     }
     
-    public function render_delete_account() {
-        $this->heading(__('Delete Account', 'aks-integration'), __('This will permanently remove your account once there are no active bookings.', 'aks-integration'));
-        echo '<div class="aks-wac-panel"><p><em>' . esc_html__('To request deletion, please contact support.', 'aks-integration') . '</em></p></div>';
-    }
-    
     /**
      * Helpers
      */
     private function has_signed_waiver($user_id) {
         return get_user_meta($user_id, self::META_WAIVER_SIGNED, true) === 'yes';
+    }
+
+    /**
+     * Check if Registration Form 2 is complete; if not, redirect to /complete-registration/
+     */
+    private function maybe_redirect_if_registration_incomplete($user_id) {
+        // Read Registration Form 2 flag from user meta.
+        // Expected values: "Yes" / "No" (case-insensitive).
+        $status = get_user_meta($user_id, 'sr_registration_form_complete', true);
+        $normalized = is_string($status) ? strtolower($status) : '';
+
+        // Only allow through when explicitly "yes".
+        if ($normalized === 'yes') {
+            return;
+        }
+
+        // Build redirect payload from user profile.
+        $user = get_userdata($user_id);
+        if (!$user) {
+            return; // Fail-safe: do nothing if something is odd with the user record.
+        }
+
+        $fname = $user->first_name;
+        $lname = $user->last_name;
+        $email = $user->user_email;
+
+        // Build redirect URL. Let add_query_arg handle encoding.
+        $redirect_url = add_query_arg(
+            array(
+                'fname'           => $fname,
+                'lname'           => $lname,
+                'applicant_email' => $email,
+                'user_id'         => $user_id,
+            ),
+            site_url('/complete-registration/')
+        );
+
+        // Hard redirect from endpoint renderer.
+        wp_safe_redirect($redirect_url);
+        exit;
     }
     
     /**
