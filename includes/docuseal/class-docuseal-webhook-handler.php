@@ -82,11 +82,32 @@ class AKS_DocuSeal_Webhook_Handler {
         
         error_log('DocuSeal Webhook: Processing for email: ' . $email);
         
-        // Find the user by email
+        // Find the user by email - check both user email AND guardian email
         $user = get_user_by('email', $email);
         
+        // If not found by user email, search for user by guardian email in user meta
         if (!$user) {
-            error_log('DocuSeal Webhook: User not found for email: ' . $email);
+            error_log('DocuSeal Webhook: User not found by direct email, searching user meta for guardian email');
+            
+            global $wpdb;
+            $user_id = $wpdb->get_var($wpdb->prepare(
+                "SELECT user_id FROM {$wpdb->usermeta} 
+                WHERE meta_key = 'sr_guardian_email' 
+                AND meta_value = %s 
+                LIMIT 1",
+                $email
+            ));
+            
+            if ($user_id) {
+                $user = get_userdata($user_id);
+                error_log('DocuSeal Webhook: Found user ' . $user_id . ' by guardian email');
+            }
+        } else {
+            error_log('DocuSeal Webhook: Found user ' . $user->ID . ' by direct email match');
+        }
+        
+        if (!$user) {
+            error_log('DocuSeal Webhook: User not found for email: ' . $email . ' (checked both user email and guardian email)');
             return new WP_Error('user_not_found', 'User not found', array('status' => 404));
         }
         

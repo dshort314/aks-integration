@@ -70,6 +70,42 @@ class AKS_DocuSeal_Integration {
     }
     
     /**
+     * Get guardian template (for when registrant is NOT the parent/guardian)
+     */
+    private function get_guardian_template() {
+        return '<h1>All Knox Swim, LLC</h1>
+<h2>Service Agreement</h2>
+<p>As a participant in the swim lesson program of All Knox Swim, LLC, including its owners, instructors, employees, and agents, I recognize and acknowledge that there are certain risks of physical injury, and I agree to assume the full risk of any injuries, damages, or loss which I may sustain as a result of participating in any manner, in any and all activities connected with or associated with such program. I further recognize and acknowledge that all activities involving competitive or recreational swimming in a pool environment involve strenuous exertions of strength using various muscle groups, and are hazardous, regardless of the care taken by All Knox Swim, LLC, and I, willingly, and knowingly assume full responsibility for the risk of bodily injury, death or property damage due to negligence of All Knox Swim, LLC or otherwise while participating in swim lesson program activities or while on pool or other premises used by the program.</p>
+<p>I acknowledge I am responsible for dressing myself and all family members appropriately for swim lessons. I am responsible for my health and my family members\' health and consulting with a physician for any concerns.</p>
+<h3>Medical Conditions</h3>
+<p>In addition, I do hereby fully release and discharge All Knox Swim, LLC from any and all claims from injuries, damages, or loss, which I may have or which may accrue to me on account of my participation in the swim lesson program. I understand that the swim lesson instructors and supervisory personnel have difficult jobs to perform. They seek cooperation and understanding from all participants, which will help ensure that the swim lesson programs are conducted in a safe manner. I will assist the instructors and supervisory personnel in supervising the participants by being watchful for unsafe behavior, promptly reporting such behavior to an instructor or supervisory personnel, and personally refrain from such behavior.</p>
+<p>All Knox Swim instructors have been advised of conducting the swim lesson programs in a safe manner, and it is expected that all participants will obey the safety rules and proper behavior. I am aware that any participant who does not conform to such rules and behaviors may be asked to leave the program.</p>
+<h3>Communicable Diseases</h3>
+<p>While All Knox Swim, LLC takes all reasonable precautions, I acknowledge that being around others involves a certain degree of risk of exposure to infectious and communicable diseases including but not limited to COVID-19, influenza, MRSA, and other diseases, viruses, or bacteria. By signing below, I acknowledge, and fully assume the risk of illness or other health related issues that might result from either me or my child(ren) or ward(s) participating in the services of All Knox Swim, LLC.</p>
+<h3>Photos</h3>
+<p>I give permission for All Knox Swim, LLC to use, without limitation or obligation, photograph/s, film footage, or tape recordings, which may include myself and/or family member\'s image or voice for purposes of promotion or interpreting All Knox Swim, LLC programs.</p>
+<h3>Payment and Cancellation Policy</h3>
+<p>Payment for swim lessons is due at registration. No student will be allowed to participate in swim lessons if swim lesson fees are outstanding. I understand swim lesson tuition is non-refundable. I understand I cannot transfer nor credit my swim lessons to another person. I understand that if All Knox Swim has to cancel lessons for reasons that they can control (such as instructor illness), then I will be offered a make-up lesson. All Knox Swim is not responsible if lessons have to be cancelled for reasons out of their control (including but not limited to inclement weather, unsafe pool conditions, utility loss, pandemic restrictions, etc.). If the student decides not to attend a scheduled lesson, there is no credit nor refund and All Knox Swim, LLC is not obligated to find another lesson time.</p>
+<p>I have read and fully understand the above program details and waiver and release all claims.</p>
+<radio-field options="I agree to the service agreement." style="font-size: 20px; width: 360px; height: 25px; display: inline-block;"></radio-field>
+<h2>Consent and Liability Waiver for Participation in All Knox Swim, LLC Activities</h2>
+<p>By agreeing below, I understand and acknowledge that swimming and water activities have inherent risks, including but not limited to, personal injury, disability, and drowning. I agree to follow all instructions and safety guidelines provided by All Knox Swim, LLC staff.</p>
+<p>I understand that while All Knox Swim, LLC staff are trained in water safety and rescue techniques, there are still risks that cannot be eliminated.</p>
+<p>I also release and hold All Knox Swim, LLC harmless from any liability if injury, harm, or damages occur to me or my child/ward while going to or from or while participating in any All Knox Swim, LLC activities, unless such injury is due to gross negligence or willful misconduct by All Knox Swim, LLC or its staff.</p>
+<radio-field options="I agree to the Consent and Liability Waiver" style="font-size: 20px; width: 460px; height: 25px; display: inline-block;"></radio-field>
+<h4>If any parts of these Agreements, Waivers, or Releases are found to be invalid, illegal, or unenforceable the rest of these Agreements, Waivers, and Releases will still be enforceable.</h4>
+<radio-field options=" I agree" style="font-size: 18px; width: 160px; height: 25px; display: inline-block;"></radio-field>
+<p>These Agreements, Waivers, and Releases apply to ALL activities with All Knox Swim, LLC.</p>
+<p>List all Children/Wards that are in your account:</p>
+<p>Student Names and Birthdays:<br /><text-field style="width: 250px; height: 120px; display: inline-block;"></text-field></p>
+<p>Name of account owner: ACCOUNT-OWNER</p>
+<p>Account email: ACCOUNT-EMAIL</p>
+<p>Parent/Guardian\'s Name: <text-field style="width: 250px; height:50px; display: inline-block;"></text-field><br />
+Parent/Guardian\'s Email: PARENT-EMAIL</p>
+<signature-field style="width: 250px; height: 120px; display: inline-block;"></signature-field>';
+    }
+    
+    /**
      * Send to DocuSeal on form submission
      */
     public function send_to_docuseal($entry, $form) {
@@ -95,13 +131,45 @@ class AKS_DocuSeal_Integration {
             $user = get_user_by('email', $email);
             $user_id = $user ? $user->ID : 0;
             
-            // Update billing address from form data if user exists
+            // Get parent/guardian fields from form
+            $is_parent_guardian = rgar($entry, '18'); // Radio: Yes/No
+            $guardian_first_name = rgar($entry, '19.3'); // Guardian First Name
+            $guardian_last_name = rgar($entry, '19.6'); // Guardian Last Name
+            $guardian_email = rgar($entry, '20'); // Guardian Email
+            
+            error_log('DocuSeal: RAW is_parent_guardian from form field 18: "' . $is_parent_guardian . '"');
+            error_log('DocuSeal: RAW guardian_first_name from form field 19.3: "' . $guardian_first_name . '"');
+            error_log('DocuSeal: RAW guardian_last_name from form field 19.6: "' . $guardian_last_name . '"');
+            error_log('DocuSeal: RAW guardian_email from form field 20: "' . $guardian_email . '"');
+            
+            // Combine guardian name
+            $guardian_full_name = trim($guardian_first_name . ' ' . $guardian_last_name);
+            
+            // Update shipping address from form data if user exists
             if ($user_id) {
-                $this->update_user_billing_address($user_id, $entry);
+                $this->update_user_shipping_address($user_id, $entry);
                 
                 // Set Registration Form 2 Complete to "Yes"
                 update_user_meta($user_id, 'sr_registration_form_complete', 'yes');
                 error_log('DocuSeal: Set sr_registration_form_complete to yes for user ' . $user_id);
+                
+                // Update parent/guardian fields
+                if (!empty($is_parent_guardian)) {
+                    // Convert "Yes"/"No" to "yes"/"no" for consistency
+                    $is_parent_value = ($is_parent_guardian === 'Yes') ? 'yes' : 'no';
+                    update_user_meta($user_id, 'sr_is_parent_guardian', $is_parent_value);
+                    error_log('DocuSeal: Set sr_is_parent_guardian to ' . $is_parent_value . ' for user ' . $user_id);
+                }
+                
+                if (!empty($guardian_email)) {
+                    update_user_meta($user_id, 'sr_guardian_email', sanitize_email($guardian_email));
+                    error_log('DocuSeal: Set sr_guardian_email to ' . $guardian_email . ' for user ' . $user_id);
+                }
+                
+                if (!empty($guardian_full_name)) {
+                    update_user_meta($user_id, 'sr_guardian_name', sanitize_text_field($guardian_full_name));
+                    error_log('DocuSeal: Set sr_guardian_name to ' . $guardian_full_name . ' for user ' . $user_id);
+                }
             }
             
             // Get nested form entries (Students) from field 21
@@ -150,18 +218,38 @@ class AKS_DocuSeal_Integration {
             }
             
             // Get HTML template from settings
-            $html_template = get_option($this->option_name, $this->get_default_template());
+            // If not parent/guardian, use guardian template
+            error_log('DocuSeal: is_parent_guardian value: "' . $is_parent_guardian . '"');
+            error_log('DocuSeal: guardian_email value: "' . $guardian_email . '"');
+            error_log('DocuSeal: guardian_full_name value: "' . $guardian_full_name . '"');
+            
+            if ($is_parent_guardian === 'No' && !empty($guardian_email)) {
+                $html_template = $this->get_guardian_template();
+                $send_to_email = $guardian_email;
+                $template_name_suffix = 'Guardian';
+                error_log('DocuSeal: Using GUARDIAN template, sending to: ' . $guardian_email);
+            } else {
+                $html_template = get_option($this->option_name, $this->get_default_template());
+                $send_to_email = $email;
+                $template_name_suffix = 'Initial';
+                error_log('DocuSeal: Using DEFAULT template, sending to: ' . $email);
+            }
+            
+            error_log('DocuSeal: Template name suffix: ' . $template_name_suffix);
+            error_log('DocuSeal: Send to email: ' . $send_to_email);
             
             // Replace placeholders
             $html_template = str_replace('STUDENT-LOOP', $student_list, $html_template);
             $html_template = str_replace('ACCOUNT-OWNER', $account_owner, $html_template);
             $html_template = str_replace('ACCOUNT-EMAIL', $email, $html_template);
+            $html_template = str_replace('PARENT-EMAIL', !empty($guardian_email) ? $guardian_email : '', $html_template);
+            $html_template = str_replace('PARENT-NAME', !empty($guardian_full_name) ? $guardian_full_name : '', $html_template);
             
             // Prepare the payload
             $payload = array(
                 'html' => $html_template,
                 'folder_name' => 'Unsigned Templates',
-                'name' => $email . ' ' . $account_owner . ' Initial'
+                'name' => $email . ' ' . $account_owner . ' ' . $template_name_suffix
             );
             
             // Initialize cURL
@@ -206,7 +294,7 @@ class AKS_DocuSeal_Integration {
                         'submitters' => array(
                             array(
                                 'role' => 'First Party',
-                                'email' => $email,
+                                'email' => $send_to_email,
                                 'name' => $account_owner
                             )
                         )
@@ -291,58 +379,58 @@ if ($submission_http_code >= 200 && $submission_http_code < 300) {
     }
     
     /**
-     * Update user's billing address from form entry
+     * Update user's shipping address from form entry
      * 
      * @param int $user_id WordPress user ID
      * @param array $entry Gravity Forms entry
      */
-    private function update_user_billing_address($user_id, $entry) {
-        // Get billing address fields from form 3
-        $billing_phone = rgar($entry, '16');      // Billing Phone
-        $billing_email = rgar($entry, '17');      // Billing Email
-        $billing_address_1 = rgar($entry, '15.1'); // Street Address
-        $billing_address_2 = rgar($entry, '15.2'); // Address Line 2
-        $billing_city = rgar($entry, '15.3');      // City
-        $billing_state = rgar($entry, '15.4');     // State/Province
-        $billing_postcode = rgar($entry, '15.5');  // ZIP/Postal Code
-        $billing_country = rgar($entry, '15.6');   // Country
+    private function update_user_shipping_address($user_id, $entry) {
+        // Get shipping address fields from form 3
+        $shipping_phone = rgar($entry, '16');      // Shipping Phone
+        $shipping_email = rgar($entry, '17');      // Shipping Email
+        $shipping_address_1 = rgar($entry, '15.1'); // Street Address
+        $shipping_address_2 = rgar($entry, '15.2'); // Address Line 2
+        $shipping_city = rgar($entry, '15.3');      // City
+        $shipping_state = rgar($entry, '15.4');     // State/Province
+        $shipping_postcode = rgar($entry, '15.5');  // ZIP/Postal Code
+        $shipping_country = rgar($entry, '15.6');   // Country
         
         // Only update if we have at least the main address field
-        if (!empty($billing_address_1)) {
-            // Update WooCommerce billing address fields
-            update_user_meta($user_id, 'billing_address_1', sanitize_text_field($billing_address_1));
+        if (!empty($shipping_address_1)) {
+            // Update WooCommerce shipping address fields
+            update_user_meta($user_id, 'shipping_address_1', sanitize_text_field($shipping_address_1));
             
-            if (!empty($billing_address_2)) {
-                update_user_meta($user_id, 'billing_address_2', sanitize_text_field($billing_address_2));
+            if (!empty($shipping_address_2)) {
+                update_user_meta($user_id, 'shipping_address_2', sanitize_text_field($shipping_address_2));
             }
             
-            if (!empty($billing_city)) {
-                update_user_meta($user_id, 'billing_city', sanitize_text_field($billing_city));
+            if (!empty($shipping_city)) {
+                update_user_meta($user_id, 'shipping_city', sanitize_text_field($shipping_city));
             }
             
-            if (!empty($billing_state)) {
-                update_user_meta($user_id, 'billing_state', sanitize_text_field($billing_state));
+            if (!empty($shipping_state)) {
+                update_user_meta($user_id, 'shipping_state', sanitize_text_field($shipping_state));
             }
             
-            if (!empty($billing_postcode)) {
-                update_user_meta($user_id, 'billing_postcode', sanitize_text_field($billing_postcode));
+            if (!empty($shipping_postcode)) {
+                update_user_meta($user_id, 'shipping_postcode', sanitize_text_field($shipping_postcode));
             }
             
-            if (!empty($billing_country)) {
-                update_user_meta($user_id, 'billing_country', sanitize_text_field($billing_country));
+            if (!empty($shipping_country)) {
+                update_user_meta($user_id, 'shipping_country', sanitize_text_field($shipping_country));
             }
             
-            if (!empty($billing_phone)) {
-                update_user_meta($user_id, 'billing_phone', sanitize_text_field($billing_phone));
+            if (!empty($shipping_phone)) {
+                update_user_meta($user_id, 'shipping_phone', sanitize_text_field($shipping_phone));
             }
             
-            if (!empty($billing_email)) {
-                update_user_meta($user_id, 'billing_email', sanitize_email($billing_email));
+            if (!empty($shipping_email)) {
+                update_user_meta($user_id, 'shipping_email', sanitize_email($shipping_email));
             }
             
-            error_log('DocuSeal: Updated billing address for user ' . $user_id);
+            error_log('DocuSeal: Updated shipping address for user ' . $user_id);
         } else {
-            error_log('DocuSeal: No billing address found in form entry');
+            error_log('DocuSeal: No shipping address found in form entry');
         }
     }
 }

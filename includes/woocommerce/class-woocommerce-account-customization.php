@@ -19,6 +19,7 @@ class AKS_WooCommerce_Account_Customization {
         'purchases'      => 'purchases',
         'store_credit'   => 'store-credit',
         'announcements'  => 'announcements',
+        'delete_account' => 'delete-account',
     ];
 
     // User meta keys
@@ -49,6 +50,29 @@ class AKS_WooCommerce_Account_Customization {
         
         // Frontend document actions
         add_action('init', array($this, 'handle_guardian_invite'));
+        add_action('init', array($this, 'handle_remind_guardian'));
+
+        /**
+         * PROFILE TAB CUSTOMIZATION
+         * - Show editable phone number before password fields
+         * - Hide email field visually
+         */
+        add_action(
+            'woocommerce_edit_account_form',
+            array($this, 'render_profile_phone_field')
+        );
+
+        add_action(
+            'wp_head',
+            array($this, 'hide_profile_email_field')
+        );
+
+        add_action(
+            'woocommerce_save_account_details',
+            array($this, 'save_profile_phone_field'),
+            10,
+            1
+        );
     }
     
     /**
@@ -71,6 +95,7 @@ class AKS_WooCommerce_Account_Customization {
         add_action('woocommerce_account_' . $this->endpoints['purchases'] . '_endpoint', array($this, 'render_purchases'));
         add_action('woocommerce_account_' . $this->endpoints['store_credit'] . '_endpoint', array($this, 'render_store_credit'));
         add_action('woocommerce_account_' . $this->endpoints['announcements'] . '_endpoint', array($this, 'render_announcements'));
+        add_action('woocommerce_account_' . $this->endpoints['delete_account'] . '_endpoint', array($this, 'render_delete_account'));
     }
     
     /**
@@ -101,6 +126,7 @@ class AKS_WooCommerce_Account_Customization {
         $new['payment-methods']                  = __('Payment Methods', 'woocommerce');
         $new['edit-account']                     = __('Profile', 'aks-integration');
         $new[$this->endpoints['store_credit']]   = __('Store Credit', 'aks-integration');
+        $new[$this->endpoints['delete_account']] = __('Delete Account', 'woocommerce');
         $new['customer-logout']                  = __('Logout', 'woocommerce');
         
         // Remove originals we've consolidated and Delete Account
@@ -166,6 +192,14 @@ class AKS_WooCommerce_Account_Customization {
         $this->heading(__('Students', 'aks-integration'));
         echo '<p>Manage your students and their information here.</p>';
         
+        // Add GravityView with output buffering to fix duplicate /test/
+        if (shortcode_exists('gravityview')) {
+            ob_start();
+            echo do_shortcode('[gravityview id="19891"]');
+            $output = ob_get_clean();
+            echo str_replace('/test/test/', '/test/', $output);
+        }
+        
         // Add LatePoint shortcode if available
         if (shortcode_exists('latepoint')) {
             echo do_shortcode('[latepoint_customer_dashboard]');
@@ -205,6 +239,7 @@ class AKS_WooCommerce_Account_Customization {
         // Registration Form 2 gating
         $this->maybe_redirect_if_registration_incomplete($user_id);
 
+        $registration_complete = get_user_meta($user_id, 'sr_registration_form_complete', true);
         $waiver_signed = $this->has_signed_waiver($user_id);
         $is_parent = get_user_meta($user_id, self::META_IS_PARENT_GUARDIAN, true);
         if ($is_parent === '') {
@@ -212,85 +247,75 @@ class AKS_WooCommerce_Account_Customization {
         }
         $guardian_email = get_user_meta($user_id, self::META_GUARDIAN_EMAIL, true);
         $docuseal_url = get_user_meta($user_id, 'docuseal_url', true);
-        $need_waiver = isset($_GET['need_waiver']);
+        
+        error_log('Documents Tab: User ID: ' . $user_id);
+        error_log('Documents Tab: is_parent value: "' . $is_parent . '"');
+        error_log('Documents Tab: waiver_signed: ' . ($waiver_signed ? 'true' : 'false'));
+        error_log('Documents Tab: docuseal_url: ' . $docuseal_url);
         
         $this->heading(
-            __('Waiver & Documents', 'aks-integration'),
-            $need_waiver ? __('Please complete the waiver before booking or managing lessons.', 'aks-integration') : ''
+            __('Waiver & Documents', 'aks-integration')
         );
         
-        echo '<div class="aks-wac-grid">';
-        
-        // Waiver Link Card
-        echo '<div class="aks-wac-card">';
-        if (!$waiver_signed && !empty($docuseal_url)) {
-            echo '<h3>' . esc_html__('Waiver Required', 'aks-integration') . '</h3>';
-            echo '<p><a href="' . esc_url($docuseal_url) . '" target="_blank" class="button">' . esc_html__('Sign Waiver Here', 'aks-integration') . '</a></p>';
-        } elseif ($waiver_signed && !empty($docuseal_url)) {
-            echo '<h3>' . esc_html__('Waiver Completed', 'aks-integration') . '</h3>';
-            echo '<p><a href="' . esc_url($docuseal_url) . '" target="_blank" class="button">' . esc_html__('View Completed Waiver', 'aks-integration') . '</a></p>';
-        } else {
-            echo '<h3>' . esc_html__('Waiver Status', 'aks-integration') . '</h3>';
-            echo '<p>' . ($waiver_signed ? esc_html__('✓ Signed', 'aks-integration') : esc_html__('Not Signed', 'aks-integration')) . '</p>';
-        }
-        echo '</div>';
-        
-        // Guardian Invite Card - Only show if NOT parent/guardian
-        if ($is_parent === 'no') {
-            echo '<div class="aks-wac-card">';
-            echo '<h3>' . esc_html__('Not the Parent/Guardian?', 'aks-integration') . '</h3>';
-            echo '<p>' . esc_html__('If you are not the parent/guardian, invite the correct guardian to sign.', 'aks-integration') . '</p>';
+        // Check if registration is complete and waiver is not signed
+        if (strtolower($registration_complete) === 'yes' && !$waiver_signed) {
+            // Registration complete but waiver pending
             
-            if ($guardian_email) {
-                echo '<p><strong>' . esc_html__('Guardian Email:', 'aks-integration') . '</strong> ' . esc_html($guardian_email) . '</p>';
+            if (strtolower($is_parent) === 'yes') {
+                // User IS the parent/guardian - show Sign Waiver button
+                echo '<p>' . esc_html__('Waiver Pending', 'aks-integration') . '</p>';
+                
+                if (!empty($docuseal_url)) {
+                    echo '<p><a href="' . esc_url($docuseal_url) . '" target="_blank" class="button">' . esc_html__('Sign Waiver', 'aks-integration') . '</a></p>';
+                }
+            } else {
+                // User IS NOT the parent/guardian - show Remind Parent/Guardian button
+                echo '<p>' . esc_html__('Waiver Pending', 'aks-integration') . '</p>';
+                
+                if (!empty($guardian_email)) {
+                    echo '<form method="post" style="margin-top:15px;">';
+                    wp_nonce_field('aks_remind_guardian', 'aks_remind_guardian_nonce');
+                    echo '<p><button type="submit" name="aks_remind_guardian" class="button">' . esc_html__('Remind Parent/Guardian', 'aks-integration') . '</button></p>';
+                    echo '</form>';
+                }
             }
             
-            echo '<form method="post">';
-            wp_nonce_field('aks_guardian_invite', 'aks_guardian_invite_nonce');
+        } elseif ($waiver_signed) {
+            // Waiver completed
+            echo '<p>' . esc_html__('✓ Waiver Completed', 'aks-integration') . '</p>';
             
-            echo '<div class="aks-guardian-fields">';
-            echo '<p>';
-            echo '<label>';
-            echo '<input type="checkbox" name="sr_is_parent_guardian" value="yes" ' . checked($is_parent, 'yes', false) . ' /> ';
-            echo esc_html__('I am the parent/guardian', 'aks-integration');
-            echo '</label>';
-            echo '</p>';
+            error_log('Documents Tab: Waiver is signed. Checking if button should display...');
+            error_log('Documents Tab: strtolower(is_parent) = "' . strtolower($is_parent) . '"');
+            error_log('Documents Tab: Comparison result: ' . (strtolower($is_parent) === 'yes' ? 'TRUE' : 'FALSE'));
+            error_log('Documents Tab: docuseal_url empty check: ' . (empty($docuseal_url) ? 'EMPTY' : 'NOT EMPTY'));
             
-            echo '<p>';
-            echo '<label for="sr_guardian_email">' . esc_html__('Guardian Email', 'aks-integration') . '</label>';
-            echo '<input type="email" name="sr_guardian_email" id="sr_guardian_email" value="' . esc_attr($guardian_email) . '" class="input-text" />';
-            echo '</p>';
+            // Only show view link if user IS the parent/guardian
+            if (strtolower($is_parent) === 'yes' && !empty($docuseal_url)) {
+                error_log('Documents Tab: DISPLAYING button with URL: ' . $docuseal_url);
+                echo '<p><a href="' . esc_url($docuseal_url) . '" target="_blank" class="button">' . esc_html__('View Completed Waiver', 'aks-integration') . '</a></p>';
+            } else {
+                error_log('Documents Tab: NOT displaying button - condition failed');
+            }
             
-            echo '<p>';
-            echo '<button type="submit" name="aks_send_guardian_invite" class="button">' . esc_html__('Send Guardian Invite', 'aks-integration') . '</button>';
-            echo '</p>';
-            echo '</div>';
-            echo '</form>';
-            echo '</div>';
+        } else {
+            // Default state
+            echo '<p>' . esc_html__('Waiver Status: ', 'aks-integration') . ($waiver_signed ? esc_html__('Signed', 'aks-integration') : esc_html__('Not Signed', 'aks-integration')) . '</p>';
         }
-        
-        echo '</div>'; // End grid
-        
-        // Add some basic styles for the grid
-        echo '<style>
-            .aks-wac-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;margin-top:20px}
-            .aks-wac-card{background:#f8f9fa;border:1px solid #e0e0e0;padding:20px;border-radius:6px}
-            .aks-wac-card h3{margin-top:0}
-            .aks-guardian-fields p{margin-bottom:10px}
-            .aks-guardian-fields label{display:block;margin-bottom:5px}
-            .aks-guardian-fields .input-text{width:100%;max-width:300px}
-        </style>';
     }
     
     public function render_videos() {
         $this->heading(__('Videos', 'aks-integration'));
         
-        // ALL logged in users have access to videos
-        echo '<p>' . esc_html__('Access your swim lesson videos here.', 'aks-integration') . '</p>';
+        // Get the /video-library/ page content
+        $video_library_page = get_page_by_path('video-library');
         
-        // You can add your video content or shortcode here
-        // For example:
-        // echo do_shortcode('[your_video_library_shortcode]');
+        if ($video_library_page) {
+            // Apply content filters to process shortcodes and formatting
+            $content = apply_filters('the_content', $video_library_page->post_content);
+            echo $content;
+        } else {
+            echo '<p>' . esc_html__('Access your swim lesson videos here.', 'aks-integration') . '</p>';
+        }
     }
     
     public function render_purchases() {
@@ -383,6 +408,166 @@ class AKS_WooCommerce_Account_Customization {
             .aks-pager li .current{background:#f7f7f7}
         </style>';
     }
+
+    public function render_delete_account() {
+        $this->heading(
+            __('Delete Account', 'aks-integration'),
+            __('Permanently delete your account and all associated data.', 'aks-integration')
+        );
+        
+        $user_id = get_current_user_id();
+        
+        // Handle deletion request
+        if (isset($_POST['aks_delete_account']) && isset($_POST['aks_delete_nonce'])) {
+            if (wp_verify_nonce($_POST['aks_delete_nonce'], 'aks_delete_account_' . $user_id)) {
+                if (isset($_POST['confirm_delete']) && $_POST['confirm_delete'] === 'DELETE') {
+                    require_once(ABSPATH . 'wp-admin/includes/user.php');
+                    
+                    // Delete the user
+                    if (wp_delete_user($user_id)) {
+                        wp_logout();
+                        wp_safe_redirect(home_url());
+                        exit;
+                    } else {
+                        wc_add_notice(__('Error deleting account. Please contact support.', 'aks-integration'), 'error');
+                    }
+                }
+            }
+        }
+        
+        echo '<div class="woocommerce-message woocommerce-message--error">';
+        echo '<p><strong>' . esc_html__('Warning: This action cannot be undone!', 'aks-integration') . '</strong></p>';
+        echo '<p>' . esc_html__('Deleting your account will permanently remove:', 'aks-integration') . '</p>';
+        echo '<ul style="margin-left:20px;">';
+        echo '<li>' . esc_html__('Your profile information', 'aks-integration') . '</li>';
+        echo '<li>' . esc_html__('Order history', 'aks-integration') . '</li>';
+        echo '<li>' . esc_html__('Saved addresses and payment methods', 'aks-integration') . '</li>';
+        echo '<li>' . esc_html__('All other account data', 'aks-integration') . '</li>';
+        echo '</ul>';
+        echo '</div>';
+        
+        echo '<form method="post" style="margin-top:20px;">';
+        wp_nonce_field('aks_delete_account_' . $user_id, 'aks_delete_nonce');
+        
+        echo '<p>';
+        echo '<label for="confirm_delete" style="display:block;margin-bottom:8px;">';
+        echo esc_html__('Type DELETE to confirm:', 'aks-integration');
+        echo '</label>';
+        echo '<input type="text" name="confirm_delete" id="confirm_delete" class="woocommerce-Input input-text" required />';
+        echo '</p>';
+        
+        echo '<p>';
+        echo '<button type="submit" name="aks_delete_account" class="button" style="background:#dc3232;border-color:#dc3232;color:#fff;">';
+        echo esc_html__('Delete My Account', 'aks-integration');
+        echo '</button>';
+        echo '</p>';
+        
+        echo '</form>';
+    }
+
+    /**
+     * PROFILE TAB: add editable phone number field
+     * Only render on My Account > Profile (edit-account endpoint), before password fields.
+     */
+    public function render_profile_phone_field() {
+        if (!is_account_page() || !function_exists('is_wc_endpoint_url') || !is_wc_endpoint_url('edit-account')) {
+            return;
+        }
+
+        $user_id = get_current_user_id();
+        if (!$user_id) {
+            return;
+        }
+
+        // Get phone and format as (999) 999-9999 if it's 10 digits
+        $phone_raw = get_user_meta($user_id, 'billing_phone', true);
+        $digits    = preg_replace('/\D+/', '', (string) $phone_raw);
+
+        if (strlen($digits) === 10) {
+            $phone_display = sprintf(
+                '(%s) %s-%s',
+                substr($digits, 0, 3),
+                substr($digits, 3, 3),
+                substr($digits, 6, 4)
+            );
+        } else {
+            $phone_display = $phone_raw;
+        }
+        ?>
+        <p class="woocommerce-form-row woocommerce-form-row--wide form-row-wide" id="billing_phone_field">
+            <label for="billing_phone">
+                <?php esc_html_e('Phone number', 'aks-integration'); ?>
+            </label>
+            <input
+                type="tel"
+                class="woocommerce-Input input-text"
+                name="billing_phone"
+                id="billing_phone"
+                value="<?php echo esc_attr($phone_display); ?>"
+                placeholder="(555) 123-4567"
+                maxlength="14"
+                pattern="\(\d{3}\) \d{3}-\d{4}"
+            />
+        </p>
+        <script>
+        (function() {
+            var phoneField = document.getElementById('billing_phone_field');
+            var passwordFieldset = document.querySelector('.woocommerce-EditAccountForm fieldset');
+            if (phoneField && passwordFieldset) {
+                passwordFieldset.parentNode.insertBefore(phoneField, passwordFieldset);
+            }
+        })();
+        </script>
+        <?php
+    }
+
+    /**
+     * PROFILE TAB: hide the email address field visually on Profile tab only.
+     */
+    public function hide_profile_email_field() {
+        if (!is_account_page() || !function_exists('is_wc_endpoint_url') || !is_wc_endpoint_url('edit-account')) {
+            return;
+        }
+
+        // Hide email, first name, last name, and display name fields
+        echo '<style>
+            .woocommerce-EditAccountForm p:has(#account_email),
+            .woocommerce-EditAccountForm p:has(#account_first_name),
+            .woocommerce-EditAccountForm p:has(#account_last_name),
+            .woocommerce-EditAccountForm p:has(#account_display_name) {
+                display: none !important;
+            }
+        </style>';
+    }
+
+    /**
+     * PROFILE TAB: save the phone number when the Profile form is submitted.
+     * Normalizes input and stores as (999) 999-9999 when 10 digits.
+     */
+    public function save_profile_phone_field($user_id) {
+        if (!$user_id) {
+            return;
+        }
+
+        if (isset($_POST['billing_phone'])) {
+            $raw    = wp_unslash($_POST['billing_phone']);
+            $digits = preg_replace('/\D+/', '', (string) $raw);
+
+            if (strlen($digits) === 10) {
+                $phone = sprintf(
+                    '(%s) %s-%s',
+                    substr($digits, 0, 3),
+                    substr($digits, 3, 3),
+                    substr($digits, 6, 4)
+                );
+            } else {
+                // Fallback sanitize without forcing format
+                $phone = wc_clean($raw);
+            }
+
+            update_user_meta($user_id, 'billing_phone', $phone);
+        }
+    }
     
     /**
      * Helpers
@@ -397,7 +582,7 @@ class AKS_WooCommerce_Account_Customization {
     private function maybe_redirect_if_registration_incomplete($user_id) {
         // Read Registration Form 2 flag from user meta.
         // Expected values: "Yes" / "No" (case-insensitive).
-        $status = get_user_meta($user_id, 'sr_registration_form_complete', true);
+        $status     = get_user_meta($user_id, 'sr_registration_form_complete', true);
         $normalized = is_string($status) ? strtolower($status) : '';
 
         // Only allow through when explicitly "yes".
@@ -461,6 +646,81 @@ class AKS_WooCommerce_Account_Customization {
         }
         
         wc_add_notice(__('Guardian information saved successfully.', 'aks-integration'), 'success');
+        wp_safe_redirect(wc_get_endpoint_url($this->endpoints['documents'], '', wc_get_page_permalink('myaccount')));
+        exit;
+    }
+    
+    /**
+     * Handle Remind Parent/Guardian button
+     */
+    public function handle_remind_guardian() {
+        if (!is_user_logged_in()) {
+            return;
+        }
+        
+        if (!isset($_POST['aks_remind_guardian'])) {
+            return;
+        }
+        
+        if (!isset($_POST['aks_remind_guardian_nonce']) || !wp_verify_nonce($_POST['aks_remind_guardian_nonce'], 'aks_remind_guardian')) {
+            wc_add_notice(__('Security check failed.', 'aks-integration'), 'error');
+            return;
+        }
+        
+        $user_id = get_current_user_id();
+        $guardian_email = get_user_meta($user_id, self::META_GUARDIAN_EMAIL, true);
+        $docuseal_url = get_user_meta($user_id, 'docuseal_url', true);
+        $guardian_name = get_user_meta($user_id, 'sr_guardian_name', true);
+        
+        error_log('Remind Guardian: User ID: ' . $user_id);
+        error_log('Remind Guardian: Guardian Email: ' . $guardian_email);
+        error_log('Remind Guardian: DocuSeal URL: ' . $docuseal_url);
+        error_log('Remind Guardian: Guardian Name: ' . $guardian_name);
+        
+        if (empty($guardian_email) || empty($docuseal_url)) {
+            wc_add_notice(__('Guardian email or waiver link not found.', 'aks-integration'), 'error');
+            error_log('Remind Guardian: Missing guardian email or docuseal URL');
+            wp_safe_redirect(wc_get_endpoint_url($this->endpoints['documents'], '', wc_get_page_permalink('myaccount')));
+            exit;
+        }
+        
+        // Get account owner info
+        $user = get_userdata($user_id);
+        $account_owner = $user->first_name . ' ' . $user->last_name;
+        
+        // Send reminder email
+        $to = $guardian_email;
+        $subject = 'Reminder: Waiver Pending for ' . get_bloginfo('name');
+        $message = "Hello" . (!empty($guardian_name) ? ' ' . $guardian_name : '') . ",\n\n";
+        $message .= "This is a reminder that a waiver is pending your signature for the account registered under " . $account_owner . ".\n\n";
+        $message .= "Please sign the waiver at the following link:\n";
+        $message .= $docuseal_url . "\n\n";
+        $message .= "Thank you,\n";
+        $message .= get_bloginfo('name');
+        
+        $headers = array('Content-Type: text/plain; charset=UTF-8');
+        
+        error_log('Remind Guardian: Attempting to send email to: ' . $to);
+        error_log('Remind Guardian: Subject: ' . $subject);
+        
+        $result = wp_mail($to, $subject, $message, $headers);
+        
+        error_log('Remind Guardian: wp_mail result: ' . ($result ? 'true' : 'false'));
+        
+        if ($result) {
+            wc_add_notice(__('Reminder sent to parent/guardian successfully.', 'aks-integration'), 'success');
+            error_log('Reminder email sent to ' . $guardian_email . ' for user ' . $user_id);
+        } else {
+            wc_add_notice(__('Failed to send reminder email. Please contact support.', 'aks-integration'), 'error');
+            error_log('Failed to send reminder email to ' . $guardian_email . ' for user ' . $user_id);
+            
+            // Log wp_mail errors
+            global $phpmailer;
+            if (isset($phpmailer)) {
+                error_log('PHPMailer Error: ' . $phpmailer->ErrorInfo);
+            }
+        }
+        
         wp_safe_redirect(wc_get_endpoint_url($this->endpoints['documents'], '', wc_get_page_permalink('myaccount')));
         exit;
     }
