@@ -137,11 +137,6 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
             $guardian_last_name = rgar($entry, '19.6'); // Guardian Last Name
             $guardian_email = rgar($entry, '20'); // Guardian Email
             
-            error_log('DocuSeal: RAW is_parent_guardian from form field 18: "' . $is_parent_guardian . '"');
-            error_log('DocuSeal: RAW guardian_first_name from form field 19.3: "' . $guardian_first_name . '"');
-            error_log('DocuSeal: RAW guardian_last_name from form field 19.6: "' . $guardian_last_name . '"');
-            error_log('DocuSeal: RAW guardian_email from form field 20: "' . $guardian_email . '"');
-            
             // Combine guardian name
             $guardian_full_name = trim($guardian_first_name . ' ' . $guardian_last_name);
             
@@ -151,24 +146,20 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
                 
                 // Set Registration Form 2 Complete to "Yes"
                 update_user_meta($user_id, 'sr_registration_form_complete', 'yes');
-                error_log('DocuSeal: Set sr_registration_form_complete to yes for user ' . $user_id);
                 
                 // Update parent/guardian fields
                 if (!empty($is_parent_guardian)) {
                     // Convert "Yes"/"No" to "yes"/"no" for consistency
                     $is_parent_value = ($is_parent_guardian === 'Yes') ? 'yes' : 'no';
                     update_user_meta($user_id, 'sr_is_parent_guardian', $is_parent_value);
-                    error_log('DocuSeal: Set sr_is_parent_guardian to ' . $is_parent_value . ' for user ' . $user_id);
                 }
                 
                 if (!empty($guardian_email)) {
                     update_user_meta($user_id, 'sr_guardian_email', sanitize_email($guardian_email));
-                    error_log('DocuSeal: Set sr_guardian_email to ' . $guardian_email . ' for user ' . $user_id);
                 }
                 
                 if (!empty($guardian_full_name)) {
                     update_user_meta($user_id, 'sr_guardian_name', sanitize_text_field($guardian_full_name));
-                    error_log('DocuSeal: Set sr_guardian_name to ' . $guardian_full_name . ' for user ' . $user_id);
                 }
             }
             
@@ -219,24 +210,15 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
             
             // Get HTML template from settings
             // If not parent/guardian, use guardian template
-            error_log('DocuSeal: is_parent_guardian value: "' . $is_parent_guardian . '"');
-            error_log('DocuSeal: guardian_email value: "' . $guardian_email . '"');
-            error_log('DocuSeal: guardian_full_name value: "' . $guardian_full_name . '"');
-            
             if ($is_parent_guardian === 'No' && !empty($guardian_email)) {
                 $html_template = $this->get_guardian_template();
                 $send_to_email = $guardian_email;
                 $template_name_suffix = 'Guardian';
-                error_log('DocuSeal: Using GUARDIAN template, sending to: ' . $guardian_email);
             } else {
                 $html_template = get_option($this->option_name, $this->get_default_template());
                 $send_to_email = $email;
                 $template_name_suffix = 'Initial';
-                error_log('DocuSeal: Using DEFAULT template, sending to: ' . $email);
             }
-            
-            error_log('DocuSeal: Template name suffix: ' . $template_name_suffix);
-            error_log('DocuSeal: Send to email: ' . $send_to_email);
             
             // Replace placeholders
             $html_template = str_replace('STUDENT-LOOP', $student_list, $html_template);
@@ -327,8 +309,6 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
                     
 // Log submission response
 if ($submission_http_code >= 200 && $submission_http_code < 300) {
-    error_log('DocuSeal Submission Success: ' . $submission_response);
-
     // Decode submission response
     $submission_data = json_decode($submission_response, true);
 
@@ -342,10 +322,6 @@ if ($submission_http_code >= 200 && $submission_http_code < 300) {
 
         // Save embed_src to user meta
         update_user_meta($user_id, 'docuseal_url', esc_url_raw($embed_src));
-
-        error_log('DocuSeal: Saved embed_src to user ' . $user_id . ': ' . $embed_src);
-    } else {
-        error_log('DocuSeal: embed_src not found in submission response or user_id missing.');
     }
 
 } else {
@@ -427,8 +403,6 @@ if ($submission_http_code >= 200 && $submission_http_code < 300) {
             if (!empty($shipping_email)) {
                 update_user_meta($user_id, 'shipping_email', sanitize_email($shipping_email));
             }
-            
-            error_log('DocuSeal: Updated shipping address for user ' . $user_id);
         } else {
             error_log('DocuSeal: No shipping address found in form entry');
         }

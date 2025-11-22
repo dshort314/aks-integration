@@ -50,7 +50,6 @@ class AKS_WooCommerce_Account_Customization {
         
         // Frontend document actions
         add_action('init', array($this, 'handle_guardian_invite'));
-        add_action('init', array($this, 'handle_remind_guardian'));
 
         /**
          * PROFILE TAB CUSTOMIZATION
@@ -248,11 +247,6 @@ class AKS_WooCommerce_Account_Customization {
         $guardian_email = get_user_meta($user_id, self::META_GUARDIAN_EMAIL, true);
         $docuseal_url = get_user_meta($user_id, 'docuseal_url', true);
         
-        error_log('Documents Tab: User ID: ' . $user_id);
-        error_log('Documents Tab: is_parent value: "' . $is_parent . '"');
-        error_log('Documents Tab: waiver_signed: ' . ($waiver_signed ? 'true' : 'false'));
-        error_log('Documents Tab: docuseal_url: ' . $docuseal_url);
-        
         $this->heading(
             __('Waiver & Documents', 'aks-integration')
         );
@@ -269,32 +263,17 @@ class AKS_WooCommerce_Account_Customization {
                     echo '<p><a href="' . esc_url($docuseal_url) . '" target="_blank" class="button">' . esc_html__('Sign Waiver', 'aks-integration') . '</a></p>';
                 }
             } else {
-                // User IS NOT the parent/guardian - show Remind Parent/Guardian button
+                // User IS NOT the parent/guardian - just show waiver pending
                 echo '<p>' . esc_html__('Waiver Pending', 'aks-integration') . '</p>';
-                
-                if (!empty($guardian_email)) {
-                    echo '<form method="post" style="margin-top:15px;">';
-                    wp_nonce_field('aks_remind_guardian', 'aks_remind_guardian_nonce');
-                    echo '<p><button type="submit" name="aks_remind_guardian" class="button">' . esc_html__('Remind Parent/Guardian', 'aks-integration') . '</button></p>';
-                    echo '</form>';
-                }
             }
             
         } elseif ($waiver_signed) {
             // Waiver completed
             echo '<p>' . esc_html__('✓ Waiver Completed', 'aks-integration') . '</p>';
             
-            error_log('Documents Tab: Waiver is signed. Checking if button should display...');
-            error_log('Documents Tab: strtolower(is_parent) = "' . strtolower($is_parent) . '"');
-            error_log('Documents Tab: Comparison result: ' . (strtolower($is_parent) === 'yes' ? 'TRUE' : 'FALSE'));
-            error_log('Documents Tab: docuseal_url empty check: ' . (empty($docuseal_url) ? 'EMPTY' : 'NOT EMPTY'));
-            
             // Only show view link if user IS the parent/guardian
             if (strtolower($is_parent) === 'yes' && !empty($docuseal_url)) {
-                error_log('Documents Tab: DISPLAYING button with URL: ' . $docuseal_url);
                 echo '<p><a href="' . esc_url($docuseal_url) . '" target="_blank" class="button">' . esc_html__('View Completed Waiver', 'aks-integration') . '</a></p>';
-            } else {
-                error_log('Documents Tab: NOT displaying button - condition failed');
             }
             
         } else {
@@ -646,81 +625,6 @@ class AKS_WooCommerce_Account_Customization {
         }
         
         wc_add_notice(__('Guardian information saved successfully.', 'aks-integration'), 'success');
-        wp_safe_redirect(wc_get_endpoint_url($this->endpoints['documents'], '', wc_get_page_permalink('myaccount')));
-        exit;
-    }
-    
-    /**
-     * Handle Remind Parent/Guardian button
-     */
-    public function handle_remind_guardian() {
-        if (!is_user_logged_in()) {
-            return;
-        }
-        
-        if (!isset($_POST['aks_remind_guardian'])) {
-            return;
-        }
-        
-        if (!isset($_POST['aks_remind_guardian_nonce']) || !wp_verify_nonce($_POST['aks_remind_guardian_nonce'], 'aks_remind_guardian')) {
-            wc_add_notice(__('Security check failed.', 'aks-integration'), 'error');
-            return;
-        }
-        
-        $user_id = get_current_user_id();
-        $guardian_email = get_user_meta($user_id, self::META_GUARDIAN_EMAIL, true);
-        $docuseal_url = get_user_meta($user_id, 'docuseal_url', true);
-        $guardian_name = get_user_meta($user_id, 'sr_guardian_name', true);
-        
-        error_log('Remind Guardian: User ID: ' . $user_id);
-        error_log('Remind Guardian: Guardian Email: ' . $guardian_email);
-        error_log('Remind Guardian: DocuSeal URL: ' . $docuseal_url);
-        error_log('Remind Guardian: Guardian Name: ' . $guardian_name);
-        
-        if (empty($guardian_email) || empty($docuseal_url)) {
-            wc_add_notice(__('Guardian email or waiver link not found.', 'aks-integration'), 'error');
-            error_log('Remind Guardian: Missing guardian email or docuseal URL');
-            wp_safe_redirect(wc_get_endpoint_url($this->endpoints['documents'], '', wc_get_page_permalink('myaccount')));
-            exit;
-        }
-        
-        // Get account owner info
-        $user = get_userdata($user_id);
-        $account_owner = $user->first_name . ' ' . $user->last_name;
-        
-        // Send reminder email
-        $to = $guardian_email;
-        $subject = 'Reminder: Waiver Pending for ' . get_bloginfo('name');
-        $message = "Hello" . (!empty($guardian_name) ? ' ' . $guardian_name : '') . ",\n\n";
-        $message .= "This is a reminder that a waiver is pending your signature for the account registered under " . $account_owner . ".\n\n";
-        $message .= "Please sign the waiver at the following link:\n";
-        $message .= $docuseal_url . "\n\n";
-        $message .= "Thank you,\n";
-        $message .= get_bloginfo('name');
-        
-        $headers = array('Content-Type: text/plain; charset=UTF-8');
-        
-        error_log('Remind Guardian: Attempting to send email to: ' . $to);
-        error_log('Remind Guardian: Subject: ' . $subject);
-        
-        $result = wp_mail($to, $subject, $message, $headers);
-        
-        error_log('Remind Guardian: wp_mail result: ' . ($result ? 'true' : 'false'));
-        
-        if ($result) {
-            wc_add_notice(__('Reminder sent to parent/guardian successfully.', 'aks-integration'), 'success');
-            error_log('Reminder email sent to ' . $guardian_email . ' for user ' . $user_id);
-        } else {
-            wc_add_notice(__('Failed to send reminder email. Please contact support.', 'aks-integration'), 'error');
-            error_log('Failed to send reminder email to ' . $guardian_email . ' for user ' . $user_id);
-            
-            // Log wp_mail errors
-            global $phpmailer;
-            if (isset($phpmailer)) {
-                error_log('PHPMailer Error: ' . $phpmailer->ErrorInfo);
-            }
-        }
-        
         wp_safe_redirect(wc_get_endpoint_url($this->endpoints['documents'], '', wc_get_page_permalink('myaccount')));
         exit;
     }
