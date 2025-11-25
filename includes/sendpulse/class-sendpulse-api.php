@@ -90,6 +90,10 @@ class AKS_SendPulse_API {
         // Search with both email AND phone first
         if (!empty($email) && !empty($phone)) {
             $phone_clean = preg_replace('/[^0-9]/', '', $phone);
+            // Get last 10 digits for search (to match regardless of country code)
+            if (strlen($phone_clean) > 10) {
+                $phone_clean = substr($phone_clean, -10);
+            }
             
             $body = array(
                 'email' => $email,
@@ -152,6 +156,10 @@ class AKS_SendPulse_API {
         // Search by phone only
         if (!empty($phone)) {
             $phone_clean = preg_replace('/[^0-9]/', '', $phone);
+            // Get last 10 digits for search (to match regardless of country code)
+            if (strlen($phone_clean) > 10) {
+                $phone_clean = substr($phone_clean, -10);
+            }
             
             $body = array(
                 'phone' => $phone_clean,
@@ -184,6 +192,101 @@ class AKS_SendPulse_API {
     }
     
     /**
+     * Get contact details by ID
+     * 
+     * @param int $contact_id Contact ID
+     * @return array|false Contact data or false on failure
+     */
+    public function get_contact($contact_id) {
+        $access_token = $this->get_access_token();
+        
+        if (!$access_token) {
+            return false;
+        }
+        
+        $url = $this->api_base_url . '/crm/v1/contacts/' . $contact_id;
+        
+        $response = wp_remote_get($url, array(
+            'headers' => array(
+                'Content-Type' => 'application/json',
+                'Authorization' => 'Bearer ' . $access_token
+            ),
+            'timeout' => 30
+        ));
+        
+        if (is_wp_error($response)) {
+            error_log('SendPulse Get Contact Error: ' . $response->get_error_message());
+            return false;
+        }
+        
+        $response_body = wp_remote_retrieve_body($response);
+        $data = json_decode($response_body, true);
+        
+        return $data;
+    }
+    
+    /**
+     * Update contact first and last name
+     * 
+     * @param int $contact_id Contact ID
+     * @param string $first_name First name
+     * @param string $last_name Last name
+     * @return array|false Response data or false on failure
+     */
+    public function update_contact_name($contact_id, $first_name, $last_name) {
+        $access_token = $this->get_access_token();
+        
+        if (!$access_token) {
+            return false;
+        }
+        
+        $url = $this->api_base_url . '/crm/v1/contacts/' . $contact_id;
+        
+        $body = array(
+            'responsibleId' => 0,
+            'firstName' => $first_name,
+            'lastName' => $last_name
+        );
+        
+        $curl = curl_init();
+        curl_setopt_array($curl, array(
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_ENCODING => '',
+            CURLOPT_MAXREDIRS => 10,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+            CURLOPT_CUSTOMREQUEST => 'PUT',
+            CURLOPT_POSTFIELDS => json_encode($body),
+            CURLOPT_HTTPHEADER => array(
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $access_token
+            ),
+        ));
+        
+        $response_body = curl_exec($curl);
+        $response_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+        $curl_error = curl_error($curl);
+        curl_close($curl);
+        
+        if ($curl_error) {
+            error_log('SendPulse Update Name cURL Error: ' . $curl_error);
+            return false;
+        }
+        
+        if ($response_code !== 200) {
+            error_log('SendPulse Update Name Error: HTTP ' . $response_code . ' - ' . $response_body);
+            return false;
+        }
+        
+        $data = json_decode($response_body, true);
+        
+        error_log('SendPulse: Updated contact ' . $contact_id . ' name to ' . $first_name . ' ' . $last_name);
+        return $data;
+    }
+    
+    /**
      * Add phone to existing contact
      * 
      * @param int $contact_id Contact ID
@@ -200,6 +303,10 @@ class AKS_SendPulse_API {
         $url = $this->api_base_url . '/crm/v1/contacts/' . $contact_id . '/phones';
         
         $phone_clean = preg_replace('/[^0-9]/', '', $phone);
+        // Add "1" prefix for US numbers
+        if (strlen($phone_clean) === 10) {
+            $phone_clean = '1' . $phone_clean;
+        }
         
         $body = array(
             'phone' => $phone_clean
@@ -219,10 +326,17 @@ class AKS_SendPulse_API {
             return false;
         }
         
+        $response_code = wp_remote_retrieve_response_code($response);
         $response_body = wp_remote_retrieve_body($response);
+        
+        if ($response_code !== 200 && $response_code !== 201) {
+            error_log('SendPulse Add Phone Error: HTTP ' . $response_code . ' - ' . $response_body);
+            return false;
+        }
+        
         $data = json_decode($response_body, true);
         
-        error_log('SendPulse: Phone added to contact ' . $contact_id);
+        error_log('SendPulse: Phone added to contact ' . $contact_id . ' - Response: ' . $response_body);
         return $data;
     }
     
@@ -265,10 +379,17 @@ class AKS_SendPulse_API {
             return false;
         }
         
+        $response_code = wp_remote_retrieve_response_code($response);
         $response_body = wp_remote_retrieve_body($response);
+        
+        if ($response_code !== 200 && $response_code !== 201) {
+            error_log('SendPulse Add Email Error: HTTP ' . $response_code . ' - ' . $response_body);
+            return false;
+        }
+        
         $data = json_decode($response_body, true);
         
-        error_log('SendPulse: Email added to contact ' . $contact_id);
+        error_log('SendPulse: Email added to contact ' . $contact_id . ' - Response: ' . $response_body);
         return $data;
     }
     
@@ -303,8 +424,12 @@ class AKS_SendPulse_API {
         }
         
         if (!empty($contact_data['phone'])) {
-            // Remove any non-numeric characters except + at the start
+            // Remove any non-numeric characters
             $phone = preg_replace('/[^0-9]/', '', $contact_data['phone']);
+            // Add "1" prefix for US numbers
+            if (strlen($phone) === 10) {
+                $phone = '1' . $phone;
+            }
             $body['phones'] = array($phone);
         }
         
