@@ -17,6 +17,23 @@ class AKS_DocuSeal_Integration {
     }
     
     /**
+     * Get redirect URL based on parent/guardian status
+     * Hardcoded for test environment - update manually when moving to production
+     * 
+     * @param bool $is_parent Whether user is parent/guardian
+     * @return string Complete redirect URL
+     */
+    private function get_redirect_url($is_parent) {
+        if ($is_parent) {
+            // Parent/guardian redirects to /account/
+            return 'https://allknoxswim.com/test/account/';
+        } else {
+            // Non-parent redirects to homepage
+            return 'https://allknoxswim.com/test/';
+        }
+    }
+    
+    /**
      * Allow custom DocuSeal tags in TinyMCE
      */
     public function allow_custom_tags($init) {
@@ -208,9 +225,11 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
                 $student_list = implode('<br />', $student_lines);
             }
             
+            // Determine if parent/guardian and set template accordingly
+            $is_parent = ($is_parent_guardian === 'Yes');
+            
             // Get HTML template from settings
-            // If not parent/guardian, use guardian template
-            if ($is_parent_guardian === 'No' && !empty($guardian_email)) {
+            if (!$is_parent && !empty($guardian_email)) {
                 $html_template = $this->get_guardian_template();
                 $send_to_email = $guardian_email;
                 $template_name_suffix = 'Guardian';
@@ -269,10 +288,14 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
                 if (isset($response_data['id'])) {
                     $template_id = $response_data['id'];
                     
+                    // Get the redirect URL based on parent/guardian status
+                    $redirect_url = $this->get_redirect_url($is_parent);
+                    
                     // Create a submission to send the document for signing
                     $submission_payload = array(
                         'template_id' => $template_id,
                         'send_email' => true,
+                        'completed_redirect_url' => $redirect_url,
                         'submitters' => array(
                             array(
                                 'role' => 'First Party',
@@ -281,6 +304,8 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
                             )
                         )
                     );
+                    
+                    error_log('DocuSeal: Creating submission with redirect URL: ' . $redirect_url);
                     
                     // Initialize new cURL request for submission
                     $curl_submission = curl_init();
@@ -307,31 +332,31 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
                     
                     curl_close($curl_submission);
                     
-// Log submission response
-if ($submission_http_code >= 200 && $submission_http_code < 300) {
-    // Decode submission response
-    $submission_data = json_decode($submission_response, true);
+                    // Log submission response
+                    if ($submission_http_code >= 200 && $submission_http_code < 300) {
+                        // Decode submission response
+                        $submission_data = json_decode($submission_response, true);
 
-    // Validate structure and extract embed_src
-    if (
-        $user_id &&
-        is_array($submission_data) &&
-        isset($submission_data[0]['embed_src'])
-    ) {
-        $embed_src = $submission_data[0]['embed_src'];
+                        // Validate structure and extract embed_src
+                        if (
+                            $user_id &&
+                            is_array($submission_data) &&
+                            isset($submission_data[0]['embed_src'])
+                        ) {
+                            $embed_src = $submission_data[0]['embed_src'];
 
-        // Save embed_src to user meta
-        update_user_meta($user_id, 'docuseal_url', esc_url_raw($embed_src));
-    }
+                            // Save embed_src to user meta
+                            update_user_meta($user_id, 'docuseal_url', esc_url_raw($embed_src));
+                        }
 
-} else {
-    // Error logging for failed HTTP codes
-    error_log('DocuSeal Submission Error: HTTP ' . $submission_http_code . ' - ' . $submission_response);
+                    } else {
+                        // Error logging for failed HTTP codes
+                        error_log('DocuSeal Submission Error: HTTP ' . $submission_http_code . ' - ' . $submission_response);
 
-    if ($submission_curl_error) {
-        error_log('cURL Submission Error: ' . $submission_curl_error);
-    }
-}
+                        if ($submission_curl_error) {
+                            error_log('cURL Submission Error: ' . $submission_curl_error);
+                        }
+                    }
 
                     
                     // Store submission response in entry meta

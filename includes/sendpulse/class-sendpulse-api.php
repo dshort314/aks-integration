@@ -466,6 +466,157 @@ class AKS_SendPulse_API {
     }
     
     /**
+     * Add contact to email mailing list (addressbook)
+     * 
+     * @param string $email Email address
+     * @param int $list_id Mailing list (addressbook) ID
+     * @return array|false Response data or false on failure
+     */
+    public function add_to_mailing_list($email, $list_id) {
+        $access_token = $this->get_access_token();
+        
+        if (!$access_token) {
+            return false;
+        }
+        
+        $url = $this->api_base_url . '/addressbooks/' . $list_id . '/emails';
+        
+        $body = array(
+            'emails' => array($email)
+        );
+        
+        $response = wp_remote_post($url, array(
+            'headers' => array(
+                'Content-Type' => 'application/json',
+                'Authorization' => 'Bearer ' . $access_token
+            ),
+            'body' => json_encode($body),
+            'timeout' => 30
+        ));
+        
+        if (is_wp_error($response)) {
+            error_log('SendPulse Add to List Error: ' . $response->get_error_message());
+            return false;
+        }
+        
+        $response_code = wp_remote_retrieve_response_code($response);
+        $response_body = wp_remote_retrieve_body($response);
+        
+        if ($response_code !== 200 && $response_code !== 201) {
+            error_log('SendPulse Add to List Error: HTTP ' . $response_code . ' - ' . $response_body);
+            return false;
+        }
+        
+        $data = json_decode($response_body, true);
+        
+        error_log('SendPulse: Added email ' . $email . ' to addressbook ' . $list_id);
+        return $data;
+    }
+    
+    /**
+     * Add tag to contact
+     * 
+     * @param int $contact_id Contact ID
+     * @param int $tag_id Tag ID (55139 for "SMS opted-in")
+     * @return array|false Response data or false on failure
+     */
+    public function add_tag_to_contact($contact_id, $tag_id) {
+        $access_token = $this->get_access_token();
+        
+        if (!$access_token) {
+            return false;
+        }
+        
+        $url = $this->api_base_url . '/crm/v1/contact-tags/' . $tag_id . '/contact/' . $contact_id;
+        
+        $response = wp_remote_post($url, array(
+            'headers' => array(
+                'Content-Type' => 'application/json',
+                'Authorization' => 'Bearer ' . $access_token
+            ),
+            'timeout' => 30
+        ));
+        
+        if (is_wp_error($response)) {
+            error_log('SendPulse Add Tag Error: ' . $response->get_error_message());
+            return false;
+        }
+        
+        $response_code = wp_remote_retrieve_response_code($response);
+        $response_body = wp_remote_retrieve_body($response);
+        
+        if ($response_code !== 200 && $response_code !== 201) {
+            error_log('SendPulse Add Tag Error: HTTP ' . $response_code . ' - ' . $response_body);
+            return false;
+        }
+        
+        $data = json_decode($response_body, true);
+        
+        error_log('SendPulse: Added tag ' . $tag_id . ' to contact ' . $contact_id);
+        return $data;
+    }
+    
+    /**
+     * Add note/comment to contact
+     * 
+     * @param int $contact_id Contact ID
+     * @param string $message Note message
+     * @return array|false Response data or false on failure
+     */
+    public function add_note_to_contact($contact_id, $message) {
+        $access_token = $this->get_access_token();
+        
+        if (!$access_token) {
+            return false;
+        }
+        
+        $url = $this->api_base_url . '/crm/v1/contacts/' . $contact_id . '/comments';
+        
+        $body = array(
+            'message' => $message
+        );
+        
+        $response = wp_remote_post($url, array(
+            'headers' => array(
+                'Content-Type' => 'application/json',
+                'Authorization' => 'Bearer ' . $access_token
+            ),
+            'body' => json_encode($body),
+            'timeout' => 30
+        ));
+        
+        if (is_wp_error($response)) {
+            error_log('SendPulse Add Note Error: ' . $response->get_error_message());
+            return false;
+        }
+        
+        $response_code = wp_remote_retrieve_response_code($response);
+        $response_body = wp_remote_retrieve_body($response);
+        
+        if ($response_code !== 200 && $response_code !== 201) {
+            error_log('SendPulse Add Note Error: HTTP ' . $response_code . ' - ' . $response_body);
+            return false;
+        }
+        
+        $data = json_decode($response_body, true);
+        
+        error_log('SendPulse: Added note to contact ' . $contact_id);
+        return $data;
+    }
+    
+    /**
+     * Add tags to contact (legacy method - kept for compatibility)
+     * 
+     * @param int $contact_id Contact ID
+     * @param array $tags Array of tag names (ignored, uses fixed tag ID)
+     * @return array|false Response data or false on failure
+     */
+    public function add_tags($contact_id, $tags) {
+        // Use the specific tag ID for "SMS opted-in" (55139)
+        return $this->add_tag_to_contact($contact_id, 55139);
+    }
+    
+    /**
      * Test API connection
      * 
      * @return bool True if connection is successful

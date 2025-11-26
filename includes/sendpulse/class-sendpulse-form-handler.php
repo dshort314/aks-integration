@@ -16,6 +16,9 @@ class AKS_SendPulse_Form_Handler {
         
         // Hook after submission to update user meta
         add_action('gform_after_submission_2', array($this, 'update_user_meta'), 10, 2);
+        
+        // Hook after Form 3 submission to handle email list and SMS opt-in
+        add_action('gform_after_submission_3', array($this, 'handle_form_3_opt_ins'), 10, 2);
     }
     
     /**
@@ -412,6 +415,182 @@ class AKS_SendPulse_Form_Handler {
                 $_POST['input_29'] = $data['emails'][0]['id']; // SendPulse Email ID
                 error_log('SendPulse: Set email ID to ' . $data['emails'][0]['id']);
             }
+        }
+    }
+    
+    /**
+     * Handle Form 3 submission - email list and SMS opt-in based on user choices
+     * 
+     * @param array $entry The entry object
+     * @param array $form The form object
+     */
+    public function handle_form_3_opt_ins($entry, $form) {
+        error_log('Form 3: handle_form_3_opt_ins called');
+        error_log('Form 3: Entry ID: ' . rgar($entry, 'id'));
+        
+        // Get the opt-in field values
+        $email_list_opt_in = rgar($entry, '22'); // Field 22: Email list opt-in (Yes/No)
+        $sms_opt_in = rgar($entry, '23');        // Field 23: SMS opt-in (Yes/No)
+        
+        // Get user email - field 29 in Form 3
+        $email = rgar($entry, '29');
+        
+        error_log('Form 3: Raw values - Field 22: "' . $email_list_opt_in . '", Field 23: "' . $sms_opt_in . '", Email: "' . $email . '"');
+        
+        // Get user by email to find their SendPulse contact ID
+        if (empty($email)) {
+            error_log('Form 3: No email found in entry');
+            return;
+        }
+        
+        $user = get_user_by('email', $email);
+        if (!$user) {
+            error_log('Form 3: User not found for email: ' . $email);
+            return;
+        }
+        
+        $contact_id = get_user_meta($user->ID, 'sendpulse_contact_id', true);
+        if (empty($contact_id)) {
+            error_log('Form 3: No SendPulse contact ID found for user ' . $user->ID);
+            return;
+        }
+        
+        error_log('Form 3: Processing opt-ins for user ' . $user->ID . ' (Contact ID: ' . $contact_id . ')');
+        error_log('Form 3: Email list opt-in (field 22): ' . $email_list_opt_in);
+        error_log('Form 3: SMS opt-in (field 23): ' . $sms_opt_in);
+        
+        // Initialize API
+        if (!class_exists('AKS_SendPulse_API')) {
+            require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/sendpulse/class-sendpulse-api.php';
+        }
+        
+        $api = new AKS_SendPulse_API($this->settings['api_id'], $this->settings['api_secret']);
+        
+        // Add to email list if they said "Yes"
+        if ($email_list_opt_in === 'Yes') {
+            error_log('Form 3: Adding email ' . $email . ' to addressbook 1102646');
+            $list_result = $api->add_to_mailing_list($email, 1102646);
+            
+            if ($list_result === false) {
+                error_log('Form 3: Failed to add email to addressbook');
+            } else {
+                error_log('Form 3: Successfully added to addressbook');
+            }
+        } else {
+            error_log('Form 3: User declined email list (value: ' . $email_list_opt_in . ')');
+        }
+        
+        // Add SMS tag if they said "Yes"
+        if ($sms_opt_in === 'Yes') {
+            error_log('Form 3: Adding tag 55139 (SMS opted-in) to contact ' . $contact_id);
+            $tag_result = $api->add_tag_to_contact($contact_id, 55139);
+            
+            if ($tag_result === false) {
+                error_log('Form 3: Failed to add tag');
+            } else {
+                error_log('Form 3: Successfully added tag');
+            }
+        } else {
+            error_log('Form 3: User declined SMS opt-in (value: ' . $sms_opt_in . ')');
+        }
+        
+        // Add student data as a note
+        $this->add_student_note($entry, $contact_id, $api);
+    }
+    
+    /**
+     * Add student information as a note to SendPulse contact
+     * 
+     * @param array $entry Gravity Forms entry
+     * @param int $contact_id SendPulse contact ID
+     * @param AKS_SendPulse_API $api SendPulse API instance
+     */
+    private function add_student_note($entry, $contact_id, $api) {
+        // Get nested form entries (Students) from field 21
+        $child_entry_ids_string = rgar($entry, '21');
+        
+        if (empty($child_entry_ids_string)) {
+            error_log('Form 3: No student data to add as note');
+            return;
+        }
+        
+        // Parse the comma-separated string into an array
+        $child_entry_ids = explode(',', $child_entry_ids_string);
+        
+        // Retrieve each child entry
+        $student_lines = array();
+        foreach ($child_entry_ids as $child_entry_id) {
+            $child_entry = GFAPI::get_entry($child_entry_id);
+            
+            if (!is_wp_error($child_entry) && $child_entry) {
+                // Name field is split: 1.3 = first name, 1.6 = last name
+                $student_first_name = rgar($child_entry, '1.3');
+                $student_last_name = rgar($child_entry, '1.6');
+                $student_birthdate = rgar($child_entry, '3');
+                
+                // Combine first and last name
+                $student_full_name = trim($student_first_name . ' ' . $student_last_name);
+                
+                // Format birthdate from YYYY-MM-DD to MM/DD/YYYY
+                if ($student_birthdate) {
+                    $date = DateTime::createFromFormat('Y-m-d', $student_birthdate);
+                    if ($date) {
+                        $student_birthdate = $date->format('m/d/Y');
+                    }
+                }
+                
+                if ($student_full_name) {
+                    $student_lines[] = $student_full_name . ' ' . $student_birthdate;
+                }
+            }
+        }
+        
+        if (empty($student_lines)) {
+            error_log('Form 3: No valid student data found');
+            return;
+        }
+        
+        // Format the note message
+        $note_message = "Student Names and Birthdays:\n" . implode("\n", $student_lines);
+        
+        error_log('Form 3: Adding student note to contact ' . $contact_id);
+        $note_result = $api->add_note_to_contact($contact_id, $note_message);
+        
+        if ($note_result === false) {
+            error_log('Form 3: Failed to add student note');
+        } else {
+            error_log('Form 3: Successfully added student note');
+        }
+    }
+    
+    /**
+     * Add contact to mailing list and tag (kept for potential future use)
+     * 
+     * @param AKS_SendPulse_API $api API instance
+     * @param int $contact_id Contact ID
+     * @param string $email Email address
+     */
+    private function add_to_list_and_tag($api, $contact_id, $email = '') {
+        // Add to "Updates and info" mailing list (ID: 1102646)
+        if (!empty($email)) {
+            error_log('SendPulse: Adding email ' . $email . ' to addressbook 1102646');
+            $list_result = $api->add_to_mailing_list($email, 1102646);
+            
+            if ($list_result === false) {
+                error_log('SendPulse: Failed to add email to addressbook');
+            } else {
+                error_log('SendPulse: Successfully added to addressbook');
+            }
+        }
+        
+        // Add "SMS opted-in" tag (tag ID: 55139)
+        error_log('SendPulse: Adding tag 55139 (SMS opted-in) to contact ' . $contact_id);
+        $tag_result = $api->add_tags($contact_id, array('SMS opted-in'));
+        
+        if ($tag_result === false) {
+            error_log('SendPulse: Failed to add tag');
+        } else {
+            error_log('SendPulse: Successfully added tag');
         }
     }
 }
