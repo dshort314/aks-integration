@@ -2,6 +2,7 @@
 /**
  * DocuSeal Integration Handler
  * Handles form submissions and creates DocuSeal documents
+ * Now supports regeneration when student data changes
  */
 
 class AKS_DocuSeal_Integration {
@@ -123,10 +124,16 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
     }
     
     /**
-     * Send to DocuSeal on form submission
+     * Send to DocuSeal on form submission or regeneration
+     * PUBLIC method so it can be called from regeneration process
+     *
+     * @param array $entry Gravity Forms entry
+     * @param array $form  Gravity Forms form object
      */
     public function send_to_docuseal($entry, $form) {
         try {
+            error_log('DocuSeal: send_to_docuseal called for entry ' . rgar($entry, 'id'));
+            
             // Get API token from settings
             $settings = get_option('aks_docuseal_settings');
             $api_token = isset($settings['api_token']) ? $settings['api_token'] : '';
@@ -148,6 +155,11 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
             $user = get_user_by('email', $email);
             $user_id = $user ? $user->ID : 0;
             
+            if (!$user_id) {
+                error_log('DocuSeal: Could not find user for email: ' . $email);
+                return;
+            }
+            
             // Get parent/guardian fields from form
             $is_parent_guardian = rgar($entry, '18'); // Radio: Yes/No
             $guardian_first_name = rgar($entry, '19.3'); // Guardian First Name
@@ -158,26 +170,25 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
             $guardian_full_name = trim($guardian_first_name . ' ' . $guardian_last_name);
             
             // Update shipping address from form data if user exists
-            if ($user_id) {
-                $this->update_user_shipping_address($user_id, $entry);
-                
-                // Set Registration Form 2 Complete to "Yes"
-                update_user_meta($user_id, 'sr_registration_form_complete', 'yes');
-                
-                // Update parent/guardian fields
-                if (!empty($is_parent_guardian)) {
-                    // Convert "Yes"/"No" to "yes"/"no" for consistency
-                    $is_parent_value = ($is_parent_guardian === 'Yes') ? 'yes' : 'no';
-                    update_user_meta($user_id, 'sr_is_parent_guardian', $is_parent_value);
-                }
-                
-                if (!empty($guardian_email)) {
-                    update_user_meta($user_id, 'sr_guardian_email', sanitize_email($guardian_email));
-                }
-                
-                if (!empty($guardian_full_name)) {
-                    update_user_meta($user_id, 'sr_guardian_name', sanitize_text_field($guardian_full_name));
-                }
+            $this->update_user_shipping_address($user_id, $entry);
+            
+            // Set Registration Form 2 Complete to "Yes"
+            update_user_meta($user_id, 'sr_registration_form_complete', 'yes');
+            error_log('DocuSeal: Set sr_registration_form_complete to yes for user ' . $user_id);
+            
+            // Update parent/guardian fields
+            if (!empty($is_parent_guardian)) {
+                // Convert "Yes"/"No" to "yes"/"no" for consistency
+                $is_parent_value = ($is_parent_guardian === 'Yes') ? 'yes' : 'no';
+                update_user_meta($user_id, 'sr_is_parent_guardian', $is_parent_value);
+            }
+            
+            if (!empty($guardian_email)) {
+                update_user_meta($user_id, 'sr_guardian_email', sanitize_email($guardian_email));
+            }
+            
+            if (!empty($guardian_full_name)) {
+                update_user_meta($user_id, 'sr_guardian_name', sanitize_text_field($guardian_full_name));
             }
             
             // Get nested form entries (Students) from field 21
@@ -186,6 +197,8 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
             // Step 1: Get the nested entry IDs from field 21 (comma-separated string)
             $child_entry_ids_string = rgar($entry, '21');
             
+            error_log('DocuSeal: Field 21 value: ' . $child_entry_ids_string);
+            
             if (!empty($child_entry_ids_string)) {
                 // Step 2: Parse the comma-separated string into an array
                 $child_entry_ids = explode(',', $child_entry_ids_string);
@@ -193,36 +206,40 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
                 // Step 3: Retrieve each child entry
                 $child_entries = array();
                 foreach ($child_entry_ids as $child_entry_id) {
-                    $child_entries[] = GFAPI::get_entry($child_entry_id);
+                    $child_entry = GFAPI::get_entry($child_entry_id);
+                    if (!is_wp_error($child_entry) && $child_entry) {
+                        $child_entries[] = $child_entry;
+                    }
                 }
                 
                 // Step 4: Process and build the student list
                 $student_lines = array();
                 foreach ($child_entries as $child_entry) {
-                    if (!is_wp_error($child_entry) && $child_entry) {
-                        // Name field is split: 1.3 = first name, 1.6 = last name
-                        $student_first_name = rgar($child_entry, '1.3');
-                        $student_last_name = rgar($child_entry, '1.6');
-                        $student_birthdate = rgar($child_entry, '3');
-                        
-                        // Combine first and last name
-                        $student_full_name = trim($student_first_name . ' ' . $student_last_name);
-                        
-                        // Format birthdate from YYYY-MM-DD to MM/DD/YYYY
-                        if ($student_birthdate) {
-                            $date = DateTime::createFromFormat('Y-m-d', $student_birthdate);
-                            if ($date) {
-                                $student_birthdate = $date->format('m/d/Y');
-                            }
+                    // Name field is split: 1.3 = first name, 1.6 = last name
+                    $student_first_name = rgar($child_entry, '1.3');
+                    $student_last_name = rgar($child_entry, '1.6');
+                    $student_birthdate = rgar($child_entry, '3');
+                    
+                    // Combine first and last name
+                    $student_full_name = trim($student_first_name . ' ' . $student_last_name);
+                    
+                    // Format birthdate from YYYY-MM-DD to MM/DD/YYYY
+                    if ($student_birthdate) {
+                        $date = DateTime::createFromFormat('Y-m-d', $student_birthdate);
+                        if ($date) {
+                            $student_birthdate = $date->format('m/d/Y');
                         }
-                        
-                        if ($student_full_name) {
-                            $student_lines[] = $student_full_name . ' ' . $student_birthdate;
-                        }
+                    }
+                    
+                    if ($student_full_name) {
+                        $student_lines[] = $student_full_name . ' ' . $student_birthdate;
                     }
                 }
                 
                 $student_list = implode('<br />', $student_lines);
+                error_log('DocuSeal: Built student list with ' . count($student_lines) . ' students');
+            } else {
+                error_log('DocuSeal: No students found in field 21');
             }
             
             // Determine if parent/guardian and set template accordingly
@@ -232,11 +249,13 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
             if (!$is_parent && !empty($guardian_email)) {
                 $html_template = $this->get_guardian_template();
                 $send_to_email = $guardian_email;
-                $template_name_suffix = 'Guardian';
+                $template_name_suffix = 'Guardian Update';
+                error_log('DocuSeal: Using guardian template, sending to: ' . $guardian_email);
             } else {
                 $html_template = get_option($this->option_name, $this->get_default_template());
                 $send_to_email = $email;
-                $template_name_suffix = 'Initial';
+                $template_name_suffix = 'Update';
+                error_log('DocuSeal: Using standard template, sending to: ' . $email);
             }
             
             // Replace placeholders
@@ -334,6 +353,8 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
                     
                     // Log submission response
                     if ($submission_http_code >= 200 && $submission_http_code < 300) {
+                        error_log('DocuSeal Submission Success: ' . $submission_response);
+                        
                         // Decode submission response
                         $submission_data = json_decode($submission_response, true);
 
@@ -347,6 +368,7 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
 
                             // Save embed_src to user meta
                             update_user_meta($user_id, 'docuseal_url', esc_url_raw($embed_src));
+                            error_log('DocuSeal: Updated docuseal_url for user ' . $user_id . ' with: ' . $embed_src);
                         }
 
                     } else {
@@ -357,11 +379,12 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
                             error_log('cURL Submission Error: ' . $submission_curl_error);
                         }
                     }
-
                     
-                    // Store submission response in entry meta
-                    gform_update_meta($entry['id'], 'docuseal_submission_response', $submission_response);
-                    gform_update_meta($entry['id'], 'docuseal_submission_http_code', $submission_http_code);
+                    // Store submission response in entry meta (only if this is a real form submission, not regeneration)
+                    if (isset($entry['id'])) {
+                        gform_update_meta($entry['id'], 'docuseal_submission_response', $submission_response);
+                        gform_update_meta($entry['id'], 'docuseal_submission_http_code', $submission_http_code);
+                    }
                 }
             } else {
                 error_log('DocuSeal API Error: HTTP ' . $http_code . ' - ' . $response);
@@ -370,9 +393,11 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
                 }
             }
             
-            // Optional: Store the response in entry meta
-            gform_update_meta($entry['id'], 'docuseal_response', $response);
-            gform_update_meta($entry['id'], 'docuseal_http_code', $http_code);
+            // Optional: Store the response in entry meta (only if this is a real form submission, not regeneration)
+            if (isset($entry['id'])) {
+                gform_update_meta($entry['id'], 'docuseal_response', $response);
+                gform_update_meta($entry['id'], 'docuseal_http_code', $http_code);
+            }
             
         } catch (Exception $e) {
             error_log('DocuSeal Integration Error: ' . $e->getMessage());
@@ -428,6 +453,8 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
             if (!empty($shipping_email)) {
                 update_user_meta($user_id, 'shipping_email', sanitize_email($shipping_email));
             }
+            
+            error_log('DocuSeal: Updated shipping address for user ' . $user_id);
         } else {
             error_log('DocuSeal: No shipping address found in form entry');
         }

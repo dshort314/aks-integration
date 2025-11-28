@@ -1,7 +1,7 @@
 <?php
 /**
  * WooCommerce Account Customization
- * Customizes WooCommerce My Account with consolidated tabs, waiver gating, and user profile meta.
+ * Customizes WooCommerce My Account with consolidated tabs, waiver gating, user profile meta, and Add Student modal.
  */
 
 if (!defined('ABSPATH')) {
@@ -51,6 +51,9 @@ class AKS_WooCommerce_Account_Customization {
         // Frontend document actions
         add_action('init', array($this, 'handle_guardian_invite'));
 
+        // Enqueue modal scripts and styles
+        add_action('wp_enqueue_scripts', array($this, 'enqueue_modal_assets'));
+
         /**
          * PROFILE TAB CUSTOMIZATION
          * - Show editable phone number before password fields
@@ -98,6 +101,123 @@ class AKS_WooCommerce_Account_Customization {
     }
     
     /**
+     * Enqueue modal scripts and styles
+     */
+    public function enqueue_modal_assets() {
+        if (!is_account_page()) {
+            return;
+        }
+
+        // Enqueue Gravity Forms modal styles if available
+        if (class_exists('GFForms')) {
+            wp_enqueue_style('gform_basic');
+            wp_enqueue_style('gform_theme');
+        }
+
+        // Add custom modal styles
+        wp_add_inline_style('woocommerce-layout', '
+            .aks-modal-overlay {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.7);
+                z-index: 9998;
+            }
+            .aks-modal-overlay.active {
+                display: block;
+            }
+            .aks-modal {
+                display: none;
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: #fff;
+                padding: 30px;
+                border-radius: 8px;
+                max-width: 800px;
+                width: 90%;
+                max-height: 90vh;
+                overflow-y: auto;
+                z-index: 9999;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            }
+            .aks-modal.active {
+                display: block;
+            }
+            .aks-modal-close {
+                position: absolute;
+                top: 15px;
+                right: 15px;
+                font-size: 28px;
+                font-weight: bold;
+                color: #999;
+                cursor: pointer;
+                background: none;
+                border: none;
+                padding: 0;
+                line-height: 1;
+            }
+            .aks-modal-close:hover {
+                color: #333;
+            }
+            .aks-add-student-btn {
+                margin-top: 20px;
+                display: inline-block;
+                padding: 12px 24px;
+                background: #2271b1;
+                color: #fff;
+                text-decoration: none;
+                border-radius: 4px;
+                font-weight: 600;
+                border: none;
+                cursor: pointer;
+                font-size: 16px;
+            }
+            .aks-add-student-btn:hover {
+                background: #135e96;
+                color: #fff;
+            }
+        ');
+
+        // Add modal JavaScript
+        wp_add_inline_script('jquery', '
+            jQuery(document).ready(function($) {
+                // Open modal
+                $(document).on("click", ".aks-add-student-btn", function(e) {
+                    e.preventDefault();
+                    $(".aks-modal-overlay").addClass("active");
+                    $(".aks-modal").addClass("active");
+                    $("body").css("overflow", "hidden");
+                });
+
+                // Close modal
+                $(document).on("click", ".aks-modal-close, .aks-modal-overlay", function(e) {
+                    e.preventDefault();
+                    $(".aks-modal-overlay").removeClass("active");
+                    $(".aks-modal").removeClass("active");
+                    $("body").css("overflow", "");
+                });
+
+                // Prevent modal content clicks from closing
+                $(document).on("click", ".aks-modal", function(e) {
+                    e.stopPropagation();
+                });
+
+                // Redirect to students tab after successful form submission
+                $(document).on("gform_confirmation_loaded", function(event, formId) {
+                    if (formId == 1) { // Form 1 is the student form
+                        window.location.href = "' . esc_js(wc_get_endpoint_url('students', '', wc_get_page_permalink('myaccount'))) . '";
+                    }
+                });
+            });
+        ');
+    }
+    
+    /**
      * Menu reshaping
      */
     public function filter_account_menu($items) {
@@ -109,10 +229,8 @@ class AKS_WooCommerce_Account_Customization {
         // Announcements at the very top (default)
         $new[$this->endpoints['announcements']] = __('Announcements', 'aks-integration');
         
-        // Students (HIDE when waiver not signed)
-        if ($this->has_signed_waiver(get_current_user_id())) {
-            $new[$this->endpoints['students']] = __('Students', 'aks-integration');
-        }
+        // Students (always show)
+        $new[$this->endpoints['students']] = __('Students', 'aks-integration');
         
         // Lessons (always show; content gated inside)
         $new[$this->endpoints['lessons']] = __('Lessons', 'aks-integration');
@@ -182,12 +300,6 @@ class AKS_WooCommerce_Account_Customization {
     }
     
     public function render_students() {
-        // Hard hide safeguard: if waiver not signed, do not reveal this template
-        if (!$this->has_signed_waiver(get_current_user_id())) {
-            wp_safe_redirect(wc_get_endpoint_url($this->endpoints['lessons'], '', wc_get_page_permalink('myaccount')));
-            exit;
-        }
-        
         $this->heading(__('Students', 'aks-integration'));
         echo '<p>Manage your students and their information here.</p>';
         
@@ -198,6 +310,22 @@ class AKS_WooCommerce_Account_Customization {
             $output = ob_get_clean();
             echo str_replace('/test/test/', '/test/', $output);
         }
+        
+        // Add "Add Student" button
+        echo '<button class="aks-add-student-btn">' . esc_html__('Add Student', 'aks-integration') . '</button>';
+        
+        // Add modal overlay and container
+        echo '<div class="aks-modal-overlay"></div>';
+        echo '<div class="aks-modal">';
+        echo '<button class="aks-modal-close">&times;</button>';
+        echo '<h3>' . esc_html__('Add New Student', 'aks-integration') . '</h3>';
+        
+        // Display Form 1 (student form) in modal
+        if (shortcode_exists('gravityform')) {
+            echo do_shortcode('[gravityform id="1" title="false" description="false" ajax="true"]');
+        }
+        
+        echo '</div>';
         
         // Add LatePoint shortcode if available
         if (shortcode_exists('latepoint')) {

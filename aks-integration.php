@@ -3,7 +3,7 @@
  * Plugin Name: AKS Integration
  * Plugin URI: https://allknoxswim.com
  * Description: Unified integration plugin for AKS - includes SendPulse CRM, Quo, and DocuSeal integrations
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: Short Results
  * Author URI: https://shortresults.com
  * License: GPL-2.0+
@@ -18,7 +18,7 @@ if (!defined('WPINC')) {
 }
 
 // Define plugin constants
-define('AKS_INTEGRATION_VERSION', '1.0.1');
+define('AKS_INTEGRATION_VERSION', '1.0.2');
 define('AKS_INTEGRATION_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('AKS_INTEGRATION_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('AKS_INTEGRATION_PLUGIN_FILE', __FILE__);
@@ -243,6 +243,21 @@ class AKS_Integration {
             'single' => true,
             'show_in_rest' => false,
         ));
+        
+        // Entry ID tracking meta fields
+        register_meta('user', 'aks_form_1_entry_id', array(
+            'type' => 'integer',
+            'description' => 'Form 1 (GF ID 2) Entry ID',
+            'single' => true,
+            'show_in_rest' => false,
+        ));
+        
+        register_meta('user', 'aks_form_2_entry_id', array(
+            'type' => 'integer',
+            'description' => 'Form 2 (GF ID 3) Entry ID',
+            'single' => true,
+            'show_in_rest' => false,
+        ));
     }
     
     /**
@@ -374,6 +389,37 @@ class AKS_Integration {
                 </td>
             </tr>
         </table>
+        
+        <h2><?php esc_html_e('All Knox Swim – Entry Tracking', 'aks-integration'); ?></h2>
+        <table class="form-table" role="presentation">
+            <tr>
+                <th><label for="aks_form_1_entry_id"><?php esc_html_e('Form 1 Entry ID', 'aks-integration'); ?></label></th>
+                <td>
+                    <?php $entry_id = get_user_meta($user->ID, 'aks_form_1_entry_id', true); ?>
+                    <input type="number" name="aks_form_1_entry_id" id="aks_form_1_entry_id" 
+                           value="<?php echo esc_attr($entry_id); ?>" 
+                           class="regular-text" />
+                    <?php if ($entry_id): ?>
+                        <a href="<?php echo esc_url(admin_url('admin.php?page=gf_entries&view=entry&id=2&lid=' . $entry_id)); ?>" target="_blank" class="button">View Entry</a>
+                    <?php endif; ?>
+                    <p class="description"><?php esc_html_e('Gravity Forms ID 2 - Initial Registration', 'aks-integration'); ?></p>
+                </td>
+            </tr>
+            
+            <tr>
+                <th><label for="aks_form_2_entry_id"><?php esc_html_e('Form 2 Entry ID', 'aks-integration'); ?></label></th>
+                <td>
+                    <?php $entry_id = get_user_meta($user->ID, 'aks_form_2_entry_id', true); ?>
+                    <input type="number" name="aks_form_2_entry_id" id="aks_form_2_entry_id" 
+                           value="<?php echo esc_attr($entry_id); ?>" 
+                           class="regular-text" />
+                    <?php if ($entry_id): ?>
+                        <a href="<?php echo esc_url(admin_url('admin.php?page=gf_entries&view=entry&id=3&lid=' . $entry_id)); ?>" target="_blank" class="button">View Entry</a>
+                    <?php endif; ?>
+                    <p class="description"><?php esc_html_e('Gravity Forms ID 3 - Complete Registration', 'aks-integration'); ?></p>
+                </td>
+            </tr>
+        </table>
         <?php
     }
     
@@ -411,6 +457,17 @@ class AKS_Integration {
         if (isset($_POST['sr_store_credit_balance'])) {
             $val = floatval($_POST['sr_store_credit_balance']);
             update_user_meta($user_id, 'sr_store_credit_balance', $val);
+        }
+        
+        // Entry tracking fields
+        if (isset($_POST['aks_form_1_entry_id'])) {
+            $entry_id = absint($_POST['aks_form_1_entry_id']);
+            update_user_meta($user_id, 'aks_form_1_entry_id', $entry_id);
+        }
+        
+        if (isset($_POST['aks_form_2_entry_id'])) {
+            $entry_id = absint($_POST['aks_form_2_entry_id']);
+            update_user_meta($user_id, 'aks_form_2_entry_id', $entry_id);
         }
     }
     

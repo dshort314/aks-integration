@@ -14,6 +14,35 @@ class AKS_Quo_API {
     }
     
     /**
+     * Format phone number to E.164 format (+1XXXXXXXXXX for US numbers)
+     * 
+     * @param string $phone Raw phone number
+     * @return string E.164 formatted phone number
+     */
+    private function format_phone_e164($phone) {
+        if (empty($phone)) {
+            return '';
+        }
+        
+        // Remove all non-numeric characters
+        $digits = preg_replace('/[^0-9]/', '', $phone);
+        
+        // If already has country code (11 digits starting with 1), format it
+        if (strlen($digits) === 11 && substr($digits, 0, 1) === '1') {
+            return '+' . $digits;
+        }
+        
+        // If 10 digits, assume US and add +1 prefix
+        if (strlen($digits) === 10) {
+            return '+1' . $digits;
+        }
+        
+        // If something else, log it and return with + prefix
+        error_log('Quo: Unexpected phone format: ' . $phone . ' (' . strlen($digits) . ' digits)');
+        return '+' . $digits;
+    }
+    
+    /**
      * Get all contacts (paginated)
      * 
      * @return array All contacts
@@ -62,24 +91,28 @@ class AKS_Quo_API {
      * @return array|null Contact data or null if not found
      */
     public function search_contact_by_phone($phone) {
-        // Clean phone number
-        $phone_clean = preg_replace('/[^0-9]/', '', $phone);
+        // Format phone to E.164 before searching
+        $phone_e164 = $this->format_phone_e164($phone);
+        
+        error_log('Quo: Searching for contact with E.164 phone: ' . $phone_e164);
         
         $contacts = $this->get_all_contacts();
         
         foreach ($contacts as $contact) {
             if (isset($contact['defaultFields']['phoneNumbers'])) {
                 foreach ($contact['defaultFields']['phoneNumbers'] as $phone_number) {
-                    $contact_phone = preg_replace('/[^0-9]/', '', $phone_number['value']);
+                    // Format the contact's phone number to E.164 for comparison
+                    $contact_phone_e164 = $this->format_phone_e164($phone_number['value']);
                     
-                    if ($contact_phone === $phone_clean) {
-                        error_log('Quo: Found contact with phone ' . $phone_clean . ', ID: ' . $contact['id']);
+                    if ($contact_phone_e164 === $phone_e164) {
+                        error_log('Quo: Found contact with phone ' . $phone_e164 . ', ID: ' . $contact['id']);
                         return $contact;
                     }
                 }
             }
         }
         
+        error_log('Quo: No contact found with phone ' . $phone_e164);
         return null;
     }
     
@@ -95,6 +128,11 @@ class AKS_Quo_API {
     public function update_contact_names($contact_id, $first_name, $last_name, $phone) {
         $url = $this->api_base_url . '/contacts/' . $contact_id;
         
+        // Format phone to E.164
+        $phone_e164 = $this->format_phone_e164($phone);
+        
+        error_log('Quo: Updating contact ' . $contact_id . ' with E.164 phone: ' . $phone_e164);
+        
         $body = array(
             'defaultFields' => array(
                 'firstName' => $first_name,
@@ -102,7 +140,7 @@ class AKS_Quo_API {
                 'phoneNumbers' => array(
                     array(
                         'name' => 'mobile',
-                        'value' => '+' . preg_replace('/[^0-9]/', '', $phone)
+                        'value' => $phone_e164
                     )
                 )
             )
@@ -126,7 +164,7 @@ class AKS_Quo_API {
         $response_body = wp_remote_retrieve_body($response);
         $data = json_decode($response_body, true);
         
-        error_log('Quo: Updated contact ' . $contact_id . ' with names');
+        error_log('Quo: Updated contact ' . $contact_id . ' with names and E.164 phone');
         return $data;
     }
     
@@ -156,10 +194,15 @@ class AKS_Quo_API {
         }
         
         if (!empty($contact_data['phone'])) {
+            // Format phone to E.164
+            $phone_e164 = $this->format_phone_e164($contact_data['phone']);
+            
+            error_log('Quo: Creating contact with E.164 phone: ' . $phone_e164);
+            
             $body['defaultFields']['phoneNumbers'] = array(
                 array(
                     'name' => 'mobile',
-                    'value' => '+' . preg_replace('/[^0-9]/', '', $contact_data['phone'])
+                    'value' => $phone_e164
                 )
             );
         }
@@ -187,7 +230,7 @@ class AKS_Quo_API {
             return false;
         }
         
-        error_log('Quo: Contact created successfully - ID: ' . $data['data']['id']);
+        error_log('Quo: Contact created successfully - ID: ' . $data['data']['id'] . ' with E.164 phone');
         return $data;
     }
 }
