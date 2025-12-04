@@ -58,8 +58,12 @@ class AKS_User_Registration_Handler {
 		// Trigger DocuSeal regeneration when Form 1 (student) is deleted
 		add_action( 'gform_after_delete_entry', array( $this, 'trigger_docuseal_on_student_delete' ), 10, 2 );
 		
+		// GravityView-specific delete action
+		add_action( 'gravityview/delete-entry/deleted', array( $this, 'trigger_docuseal_on_gv_delete' ), 10, 2 );
+		
 		// Debug: Log ALL entry deletions
 		add_action( 'gform_after_delete_entry', array( $this, 'debug_entry_delete' ), 5, 2 );
+		add_action( 'gravityview/delete-entry/deleted', array( $this, 'debug_gv_delete' ), 5, 2 );
 		
 		// Debug: Log ALL entry updates to verify hook is firing
 		add_action( 'gform_after_update_entry', array( $this, 'debug_entry_update' ), 5, 2 );
@@ -340,6 +344,36 @@ class AKS_User_Registration_Handler {
 
 		// Trigger DocuSeal regeneration
 		$this->regenerate_docuseal( $parent_entry, $user_id );
+		
+		// Update the stored student count after adding new student
+		global $wpdb;
+		$entry_meta_table = GFFormsModel::get_entry_meta_table_name();
+		
+		if ( class_exists( 'GPNF_Entry' ) ) {
+			$query = $wpdb->prepare(
+				"SELECT COUNT(*) FROM {$entry_meta_table} 
+				WHERE meta_key = %s AND meta_value = %s",
+				GPNF_Entry::ENTRY_PARENT_KEY,
+				$parent_entry_id
+			);
+			
+			$current_student_count = intval( $wpdb->get_var( $query ) );
+			gform_update_meta( $parent_entry_id, 'aks_student_count', $current_student_count );
+			error_log('AKS DocuSeal Trigger: Updated student count to ' . $current_student_count . ' for parent entry ' . $parent_entry_id);
+		}
+	}
+
+	/**
+	 * Debug: Log GravityView deletions
+	 *
+	 * @param int   $entry_id The entry ID being deleted
+	 * @param array $entry    The entry being deleted
+	 */
+	public function debug_gv_delete( $entry_id, $entry ) {
+		error_log('=== AKS DEBUG: gravityview/delete-entry/deleted fired ===');
+		error_log('Entry ID: ' . $entry_id);
+		error_log('Entry data: ' . print_r($entry, true));
+		error_log('=== END DEBUG ===');
 	}
 
 	/**
@@ -403,24 +437,50 @@ class AKS_User_Registration_Handler {
 			return;
 		}
 
-		// Get students from field 21
-		$students = rgar( $fresh_entry, '21' );
+		// Query database to get current student count
+		global $wpdb;
+		$entry_meta_table = GFFormsModel::get_entry_meta_table_name();
 		
-		error_log('AKS DocuSeal Trigger: Form 3 updated, field 21 value: "' . $students . '"');
-
-		// Get user by email from field 29
-		$email = rgar( $fresh_entry, '29' );
-		$user = get_user_by( 'email', $email );
-
-		if ( ! $user ) {
-			error_log( 'AKS DocuSeal Trigger: User not found for email: ' . $email );
+		if ( ! class_exists( 'GPNF_Entry' ) ) {
+			error_log('AKS DocuSeal Trigger: GPNF_Entry class not found');
 			return;
 		}
+		
+		$query = $wpdb->prepare(
+			"SELECT COUNT(*) FROM {$entry_meta_table} 
+			WHERE meta_key = %s AND meta_value = %s",
+			GPNF_Entry::ENTRY_PARENT_KEY,
+			$entry_id
+		);
+		
+		$current_student_count = intval( $wpdb->get_var( $query ) );
+		
+		// Get previous student count from meta
+		$previous_student_count = intval( gform_get_meta( $entry_id, 'aks_student_count' ) );
+		
+		error_log('AKS DocuSeal Trigger: Form 3 student count - Previous: ' . $previous_student_count . ', Current: ' . $current_student_count);
+		
+		// Update stored count
+		gform_update_meta( $entry_id, 'aks_student_count', $current_student_count );
+		
+		// If count changed, trigger regeneration
+		if ( $previous_student_count !== $current_student_count ) {
+			error_log('AKS DocuSeal Trigger: Student count changed (added or deleted)');
+			
+			// Get user by email from field 29
+			$email = rgar( $fresh_entry, '29' );
+			$user = get_user_by( 'email', $email );
 
-		error_log('AKS DocuSeal Trigger: Found user ' . $user->ID . ', calling regenerate_docuseal');
+			if ( ! $user ) {
+				error_log( 'AKS DocuSeal Trigger: User not found for email: ' . $email );
+				return;
+			}
 
-		// Trigger DocuSeal regeneration
-		$this->regenerate_docuseal( $fresh_entry, $user->ID );
+			error_log('AKS DocuSeal Trigger: Found user ' . $user->ID . ', calling regenerate_docuseal');
+
+			// Trigger DocuSeal regeneration
+			$this->regenerate_docuseal( $fresh_entry, $user->ID );
+		}
 	}
 
 	/**
@@ -482,6 +542,115 @@ class AKS_User_Registration_Handler {
 
 		// Trigger DocuSeal regeneration
 		$this->regenerate_docuseal( $parent_entry, $user->ID );
+		
+		// Update the stored student count (in case any were deleted)
+		global $wpdb;
+		$entry_meta_table = GFFormsModel::get_entry_meta_table_name();
+		
+		if ( class_exists( 'GPNF_Entry' ) ) {
+			$query = $wpdb->prepare(
+				"SELECT COUNT(*) FROM {$entry_meta_table} 
+				WHERE meta_key = %s AND meta_value = %s",
+				GPNF_Entry::ENTRY_PARENT_KEY,
+				$parent_entry_id
+			);
+			
+			$current_student_count = intval( $wpdb->get_var( $query ) );
+			gform_update_meta( $parent_entry_id, 'aks_student_count', $current_student_count );
+			error_log('AKS DocuSeal Trigger: Updated student count to ' . $current_student_count . ' for parent entry ' . $parent_entry_id);
+		}
+	}
+
+	/**
+	 * Trigger DocuSeal regeneration when GravityView deletes an entry
+	 *
+	 * @param int   $entry_id The entry ID being deleted
+	 * @param array $entry    The entry being deleted
+	 */
+	public function trigger_docuseal_on_gv_delete( $entry_id, $entry ) {
+		error_log('AKS DocuSeal Trigger: GravityView deleted entry ' . $entry_id);
+		
+		// Get form ID
+		$form_id = is_array($entry) ? rgar($entry, 'form_id') : null;
+		
+		// If we don't have form_id in entry, fetch it
+		if ( ! $form_id ) {
+			$full_entry = GFAPI::get_entry( $entry_id );
+			if ( ! is_wp_error( $full_entry ) ) {
+				$form_id = rgar($full_entry, 'form_id');
+			}
+		}
+		
+		error_log('AKS DocuSeal Trigger: Entry form_id: ' . $form_id);
+		
+		// Only watch Form 1 (student) deletions
+		if ( intval( $form_id ) !== 1 ) {
+			error_log('AKS DocuSeal Trigger: Not Form 1, skipping');
+			return;
+		}
+
+		error_log('AKS DocuSeal Trigger: Form 1 (student) deleted via GravityView, entry ID: ' . $entry_id);
+
+		// Check if GPNF class exists
+		if ( ! class_exists( 'GPNF_Entry' ) ) {
+			error_log( 'AKS DocuSeal Trigger: GPNF_Entry class not found' );
+			return;
+		}
+
+		// Try to get parent entry ID from the entry array first (GPNF stores it there)
+		$parent_entry_id = rgar( $entry, GPNF_Entry::ENTRY_PARENT_KEY );
+		
+		// If not in entry array, try meta (though it may already be deleted)
+		if ( empty( $parent_entry_id ) ) {
+			$parent_entry_id = gform_get_meta( $entry_id, GPNF_Entry::ENTRY_PARENT_KEY );
+		}
+		
+		error_log('AKS DocuSeal Trigger: Parent entry ID from entry: ' . rgar( $entry, GPNF_Entry::ENTRY_PARENT_KEY ));
+		error_log('AKS DocuSeal Trigger: Parent entry ID from meta: ' . gform_get_meta( $entry_id, GPNF_Entry::ENTRY_PARENT_KEY ));
+		error_log('AKS DocuSeal Trigger: Final parent entry ID: ' . $parent_entry_id);
+		
+		if ( empty( $parent_entry_id ) ) {
+			error_log('AKS DocuSeal Trigger: No parent entry found for deleted student entry ' . $entry_id);
+			return;
+		}
+
+		error_log('AKS DocuSeal Trigger: Found parent entry ID: ' . $parent_entry_id);
+
+		// Get the parent Form 3 entry
+		$parent_entry = GFAPI::get_entry( $parent_entry_id );
+		if ( is_wp_error( $parent_entry ) ) {
+			error_log( 'AKS DocuSeal Trigger: Could not retrieve parent entry ' . $parent_entry_id );
+			return;
+		}
+
+		// Get user by email from parent entry
+		$email = rgar( $parent_entry, '29' );
+		$user = get_user_by( 'email', $email );
+
+		if ( ! $user ) {
+			error_log( 'AKS DocuSeal Trigger: User not found for email: ' . $email );
+			return;
+		}
+
+		error_log('AKS DocuSeal Trigger: Student deleted, regenerating DocuSeal for user ' . $user->ID);
+
+		// Trigger DocuSeal regeneration
+		$this->regenerate_docuseal( $parent_entry, $user->ID );
+		
+		// Update the stored student count
+		global $wpdb;
+		$entry_meta_table = GFFormsModel::get_entry_meta_table_name();
+		
+		$query = $wpdb->prepare(
+			"SELECT COUNT(*) FROM {$entry_meta_table} 
+			WHERE meta_key = %s AND meta_value = %s",
+			GPNF_Entry::ENTRY_PARENT_KEY,
+			$parent_entry_id
+		);
+		
+		$current_student_count = intval( $wpdb->get_var( $query ) );
+		gform_update_meta( $parent_entry_id, 'aks_student_count', $current_student_count );
+		error_log('AKS DocuSeal Trigger: Updated student count to ' . $current_student_count . ' for parent entry ' . $parent_entry_id);
 	}
 
 	/**
