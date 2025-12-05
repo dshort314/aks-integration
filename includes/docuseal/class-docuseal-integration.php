@@ -132,14 +132,11 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
      */
     public function send_to_docuseal($entry, $form) {
         try {
-            error_log('DocuSeal: send_to_docuseal called for entry ' . rgar($entry, 'id'));
-            
             // Get API token from settings
             $settings = get_option('aks_docuseal_settings');
             $api_token = isset($settings['api_token']) ? $settings['api_token'] : '';
             
             if (empty($api_token)) {
-                error_log('DocuSeal: API token not configured in settings');
                 return;
             }
             
@@ -156,7 +153,6 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
             $user_id = $user ? $user->ID : 0;
             
             if (!$user_id) {
-                error_log('DocuSeal: Could not find user for email: ' . $email);
                 return;
             }
             
@@ -174,7 +170,6 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
             
             // Set Registration Form 2 Complete to "Yes"
             update_user_meta($user_id, 'sr_registration_form_complete', 'yes');
-            error_log('DocuSeal: Set sr_registration_form_complete to yes for user ' . $user_id);
             
             // Update parent/guardian fields
             if (!empty($is_parent_guardian)) {
@@ -196,8 +191,6 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
             
             // Step 1: Get the nested entry IDs from field 21 (comma-separated string)
             $child_entry_ids_string = rgar($entry, '21');
-            
-            error_log('DocuSeal: Field 21 value: ' . $child_entry_ids_string);
             
             if (!empty($child_entry_ids_string)) {
                 // Step 2: Parse the comma-separated string into an array
@@ -237,9 +230,6 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
                 }
                 
                 $student_list = implode('<br />', $student_lines);
-                error_log('DocuSeal: Built student list with ' . count($student_lines) . ' students');
-            } else {
-                error_log('DocuSeal: No students found in field 21');
             }
             
             // Determine if parent/guardian and set template accordingly
@@ -250,12 +240,10 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
                 $html_template = $this->get_guardian_template();
                 $send_to_email = $guardian_email;
                 $template_name_suffix = 'Guardian Update';
-                error_log('DocuSeal: Using guardian template, sending to: ' . $guardian_email);
             } else {
                 $html_template = get_option($this->option_name, $this->get_default_template());
                 $send_to_email = $email;
                 $template_name_suffix = 'Update';
-                error_log('DocuSeal: Using standard template, sending to: ' . $email);
             }
             
             // Replace placeholders
@@ -299,7 +287,6 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
             
             // Log the response for debugging
             if ($http_code >= 200 && $http_code < 300) {
-                error_log('DocuSeal API Success: ' . $response);
                 
                 // Decode the response to get the template ID
                 $response_data = json_decode($response, true);
@@ -323,8 +310,6 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
                             )
                         )
                     );
-                    
-                    error_log('DocuSeal: Creating submission with redirect URL: ' . $redirect_url);
                     
                     // Initialize new cURL request for submission
                     $curl_submission = curl_init();
@@ -353,8 +338,6 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
                     
                     // Log submission response
                     if ($submission_http_code >= 200 && $submission_http_code < 300) {
-                        error_log('DocuSeal Submission Success: ' . $submission_response);
-                        
                         // Decode submission response
                         $submission_data = json_decode($submission_response, true);
 
@@ -368,15 +351,11 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
 
                             // Save embed_src to user meta
                             update_user_meta($user_id, 'docuseal_url', esc_url_raw($embed_src));
-                            error_log('DocuSeal: Updated docuseal_url for user ' . $user_id . ' with: ' . $embed_src);
                         }
 
                     } else {
                         // Error logging for failed HTTP codes
-                        error_log('DocuSeal Submission Error: HTTP ' . $submission_http_code . ' - ' . $submission_response);
-
                         if ($submission_curl_error) {
-                            error_log('cURL Submission Error: ' . $submission_curl_error);
                         }
                     }
                     
@@ -387,9 +366,7 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
                     }
                 }
             } else {
-                error_log('DocuSeal API Error: HTTP ' . $http_code . ' - ' . $response);
                 if ($curl_error) {
-                    error_log('cURL Error: ' . $curl_error);
                 }
             }
             
@@ -400,7 +377,6 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
             }
             
         } catch (Exception $e) {
-            error_log('DocuSeal Integration Error: ' . $e->getMessage());
         }
     }
     
@@ -453,10 +429,6 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
             if (!empty($shipping_email)) {
                 update_user_meta($user_id, 'shipping_email', sanitize_email($shipping_email));
             }
-            
-            error_log('DocuSeal: Updated shipping address for user ' . $user_id);
-        } else {
-            error_log('DocuSeal: No shipping address found in form entry');
         }
     }
 }

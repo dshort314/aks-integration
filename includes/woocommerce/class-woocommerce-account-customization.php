@@ -300,6 +300,11 @@ class AKS_WooCommerce_Account_Customization {
     }
     
     public function render_students() {
+        $user_id = get_current_user_id();
+
+        // Registration Form 2 gating
+        $this->maybe_redirect_if_registration_incomplete($user_id);
+
         $this->heading(__('Students', 'aks-integration'));
         echo '<p>Manage your students and their information here.</p>';
         
