@@ -113,9 +113,16 @@ class AKS_DocuSeal_Webhook_Handler {
         
         $user_id = $user->ID;
         
-        // Mark waiver as signed
-        update_user_meta($user_id, 'sr_waiver_signed', 'yes');
-        error_log('DocuSeal Webhook: Marked waiver as signed for user ' . $user_id);
+        // Only mark waiver as signed if user IS the parent/guardian
+        $is_parent = get_user_meta($user_id, 'sr_is_parent_guardian', true);
+        $is_parent_normalized = strtolower($is_parent);
+        
+        if ($is_parent_normalized === 'yes') {
+            update_user_meta($user_id, 'sr_waiver_signed', 'yes');
+            error_log('DocuSeal Webhook: Marked waiver as signed for user ' . $user_id . ' (is parent/guardian)');
+        } else {
+            error_log('DocuSeal Webhook: Waiver completed but NOT updating sr_waiver_signed for user ' . $user_id . ' (is NOT parent/guardian, is_parent: "' . $is_parent . '")');
+        }
         
         return new WP_REST_Response(array(
             'message' => 'Webhook processed successfully',

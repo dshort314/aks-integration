@@ -38,10 +38,13 @@ class AKS_User_Registration_Handler {
 		add_filter( 'gform_confirmation_2', array( $this, 'modify_confirmation_redirect' ), 10, 4 );
 
 		// Store entry ID in user meta for Form 2 (after submission)
-		add_action( 'gform_after_submission_2', array( $this, 'store_form_2_entry_id' ), 10, 2 );
+		add_action( 'gform_after_submission_2', array( $this, 'store_form_2_entry_id' ), 20, 2 );
 
 		// Store entry ID in user meta for Form 3 (after submission)
 		add_action( 'gform_after_submission_3', array( $this, 'store_form_3_entry_id' ), 10, 2 );
+
+		// Send Form 3 data to Pabbly webhook
+		add_action( 'gform_after_submission_3', array( $this, 'send_to_pabbly_webhook' ), 15, 2 );
 
 		// Link Form 1 (student) submissions to parent Form 3 entry
 		add_filter( 'gform_entry_post_save_1', array( $this, 'link_student_to_parent' ), 10, 2 );
@@ -253,6 +256,309 @@ class AKS_User_Registration_Handler {
 		// Store entry ID in user meta
 		update_user_meta( $user->ID, 'aks_form_2_entry_id', $entry_id );
 		error_log( 'AKS Entry Tracking: Stored Form 3 (labeled Form 2) entry ID ' . $entry_id . ' for user ' . $user->ID );
+	}
+
+	/**
+	 * Send Form 3 entry and user data to Pabbly webhook
+	 *
+	 * @param array $entry The entry object
+	 * @param array $form  The form object
+	 */
+	public function send_to_pabbly_webhook( $entry, $form ) {
+		// Get email from field 29
+		$email = rgar( $entry, '29' );
+		
+		if ( empty( $email ) ) {
+			error_log( 'AKS Pabbly Webhook: No email found in entry' );
+			return;
+		}
+		
+		// Get user by email
+		$user = get_user_by( 'email', $email );
+		if ( ! $user ) {
+			error_log( 'AKS Pabbly Webhook: User not found for email: ' . $email );
+			return;
+		}
+		
+		// Get all user meta
+		$user_meta = get_user_meta( $user->ID );
+		
+		// Format user meta - convert arrays to single values where appropriate
+		$formatted_user_meta = array();
+		foreach ( $user_meta as $key => $value ) {
+			if ( is_array( $value ) && count( $value ) === 1 ) {
+				$formatted_user_meta[ $key ] = $value[0];
+			} else {
+				$formatted_user_meta[ $key ] = $value;
+			}
+		}
+		
+		// Build user data object matching the format you provided
+		$user_data = array(
+			'data' => array(
+				'ID' => (string) $user->ID,
+				'user_login' => $user->user_login,
+				'user_pass' => $user->user_pass,
+				'user_nicename' => $user->user_nicename,
+				'user_email' => $user->user_email,
+				'user_url' => $user->user_url,
+				'user_registered' => $user->user_registered,
+				'user_activation_key' => $user->user_activation_key,
+				'user_status' => (string) $user->user_status,
+				'display_name' => $user->display_name,
+			),
+			'ID' => $user->ID,
+			'caps' => (array) $user->caps,
+			'cap_key' => $user->cap_key,
+			'roles' => (array) $user->roles,
+			'allcaps' => (array) $user->allcaps,
+			'filter' => $user->filter,
+			'user_meta' => $formatted_user_meta,
+		);
+		
+		// Format entry data with field labels and values
+		$formatted_entry_data = array();
+		
+		// Add basic entry info
+		$formatted_entry_data['entry_id'] = $entry['id'];
+		$formatted_entry_data['date_created'] = $entry['date_created'];
+		$formatted_entry_data['form_id'] = $entry['form_id'];
+		
+		// Get form fields and map labels to values
+		$form_fields = array();
+		if ( isset( $form['fields'] ) && is_array( $form['fields'] ) ) {
+			foreach ( $form['fields'] as $field ) {
+				$field_id = $field->id;
+				$field_label = $field->label;
+				$field_value = rgar( $entry, $field_id );
+				
+				// Skip field 21 (nested form) - we'll handle it separately
+				if ( $field_id == 21 ) {
+					continue;
+				}
+				
+				// Only include fields that have values
+				if ( $field_value !== '' && $field_value !== null ) {
+					$form_fields[] = array(
+						'label' => $field_label,
+						'value' => $field_value,
+					);
+				}
+			}
+		}
+		
+		$formatted_entry_data['form_fields'] = $form_fields;
+		
+		// Get nested form entries (Students) from field 21
+		$students = array();
+		$child_entry_ids_string = rgar( $entry, '21' );
+		
+		if ( ! empty( $child_entry_ids_string ) ) {
+			$child_entry_ids = explode( ',', $child_entry_ids_string );
+			
+			foreach ( $child_entry_ids as $child_entry_id ) {
+				$child_entry = GFAPI::get_entry( $child_entry_id );
+				
+				if ( ! is_wp_error( $child_entry ) && $child_entry ) {
+					// Name field is split: 1.3 = first name, 1.6 = last name
+					$student_first_name = rgar( $child_entry, '1.3' );
+					$student_last_name = rgar( $child_entry, '1.6' );
+					$student_birthdate = rgar( $child_entry, '3' );
+					
+					// Format birthdate from YYYY-MM-DD to MM/DD/YYYY
+					if ( $student_birthdate ) {
+						$date = DateTime::createFromFormat( 'Y-m-d', $student_birthdate );
+						if ( $date ) {
+							$student_birthdate = $date->format( 'm/d/Y' );
+						}
+					}
+					
+					$students[] = array(
+						'first_name' => $student_first_name,
+						'last_name' => $student_last_name,
+						'birthdate' => $student_birthdate,
+					);
+				}
+			}
+		}
+		
+		$formatted_entry_data['students'] = $students;
+		
+		// Build complete payload with entry data and user data
+		$payload = array(
+			'entry_data' => $formatted_entry_data,
+			'user' => $user_data,
+		);
+		
+		// Webhook URL
+		$webhook_url = 'https://connect.pabbly.com/workflow/sendwebhookdata/IjU3NjYwNTY0MDYzMzA0M2M1MjZjNTUzNjUxMzIi_pc';
+		
+		// Send to webhook
+		$response = wp_remote_post( $webhook_url, array(
+			'method'      => 'POST',
+			'timeout'     => 45,
+			'headers'     => array(
+				'Content-Type' => 'application/json',
+			),
+			'body'        => json_encode( $payload ),
+			'data_format' => 'body',
+		) );
+		
+		if ( is_wp_error( $response ) ) {
+			error_log( 'AKS Pabbly Webhook: Error sending to webhook - ' . $response->get_error_message() );
+		} else {
+			$response_code = wp_remote_retrieve_response_code( $response );
+			$response_body = wp_remote_retrieve_body( $response );
+			error_log( 'AKS Pabbly Webhook: Sent successfully - HTTP ' . $response_code . ' - ' . $response_body );
+		}
+	}
+
+	/**
+	 * Send updated Form 3 entry and user data to Pabbly webhook when student info changes
+	 *
+	 * @param array $entry   The Form 3 entry object
+	 * @param array $form    The form object
+	 * @param int   $user_id The WordPress user ID
+	 */
+	public function send_to_pabbly_update_webhook( $entry, $form, $user_id ) {
+		// Get user data
+		$user = get_userdata( $user_id );
+		if ( ! $user ) {
+			error_log( 'AKS Pabbly Update Webhook: User not found for ID: ' . $user_id );
+			return;
+		}
+		
+		// Get all user meta
+		$user_meta = get_user_meta( $user_id );
+		
+		// Format user meta - convert arrays to single values where appropriate
+		$formatted_user_meta = array();
+		foreach ( $user_meta as $key => $value ) {
+			if ( is_array( $value ) && count( $value ) === 1 ) {
+				$formatted_user_meta[ $key ] = $value[0];
+			} else {
+				$formatted_user_meta[ $key ] = $value;
+			}
+		}
+		
+		// Build user data object
+		$user_data = array(
+			'data' => array(
+				'ID' => (string) $user->ID,
+				'user_login' => $user->user_login,
+				'user_pass' => $user->user_pass,
+				'user_nicename' => $user->user_nicename,
+				'user_email' => $user->user_email,
+				'user_url' => $user->user_url,
+				'user_registered' => $user->user_registered,
+				'user_activation_key' => $user->user_activation_key,
+				'user_status' => (string) $user->user_status,
+				'display_name' => $user->display_name,
+			),
+			'ID' => $user->ID,
+			'caps' => (array) $user->caps,
+			'cap_key' => $user->cap_key,
+			'roles' => (array) $user->roles,
+			'allcaps' => (array) $user->allcaps,
+			'filter' => $user->filter,
+			'user_meta' => $formatted_user_meta,
+		);
+		
+		// Format entry data with field labels and values
+		$formatted_entry_data = array();
+		
+		// Add basic entry info
+		$formatted_entry_data['entry_id'] = $entry['id'];
+		$formatted_entry_data['date_created'] = $entry['date_created'];
+		$formatted_entry_data['form_id'] = $entry['form_id'];
+		
+		// Get form fields and map labels to values
+		$form_fields = array();
+		if ( isset( $form['fields'] ) && is_array( $form['fields'] ) ) {
+			foreach ( $form['fields'] as $field ) {
+				$field_id = $field->id;
+				$field_label = $field->label;
+				$field_value = rgar( $entry, $field_id );
+				
+				// Skip field 21 (nested form) - we'll handle it separately
+				if ( $field_id == 21 ) {
+					continue;
+				}
+				
+				// Only include fields that have values
+				if ( $field_value !== '' && $field_value !== null ) {
+					$form_fields[] = array(
+						'label' => $field_label,
+						'value' => $field_value,
+					);
+				}
+			}
+		}
+		
+		$formatted_entry_data['form_fields'] = $form_fields;
+		
+		// Get nested form entries (Students) from field 21
+		$students = array();
+		$child_entry_ids_string = rgar( $entry, '21' );
+		
+		if ( ! empty( $child_entry_ids_string ) ) {
+			$child_entry_ids = explode( ',', $child_entry_ids_string );
+			
+			foreach ( $child_entry_ids as $child_entry_id ) {
+				$child_entry = GFAPI::get_entry( $child_entry_id );
+				
+				if ( ! is_wp_error( $child_entry ) && $child_entry ) {
+					// Name field is split: 1.3 = first name, 1.6 = last name
+					$student_first_name = rgar( $child_entry, '1.3' );
+					$student_last_name = rgar( $child_entry, '1.6' );
+					$student_birthdate = rgar( $child_entry, '3' );
+					
+					// Format birthdate from YYYY-MM-DD to MM/DD/YYYY
+					if ( $student_birthdate ) {
+						$date = DateTime::createFromFormat( 'Y-m-d', $student_birthdate );
+						if ( $date ) {
+							$student_birthdate = $date->format( 'm/d/Y' );
+						}
+					}
+					
+					$students[] = array(
+						'first_name' => $student_first_name,
+						'last_name' => $student_last_name,
+						'birthdate' => $student_birthdate,
+					);
+				}
+			}
+		}
+		
+		$formatted_entry_data['students'] = $students;
+		
+		// Build complete payload with entry data and user data
+		$payload = array(
+			'entry_data' => $formatted_entry_data,
+			'user' => $user_data,
+		);
+		
+		// Webhook URL for updates
+		$webhook_url = 'https://connect.pabbly.com/workflow/sendwebhookdata/IjU3NjYwNTY0MDYzMzA0M2M1MjZjNTUzNzUxM2Ei_pc';
+		
+		// Send to webhook
+		$response = wp_remote_post( $webhook_url, array(
+			'method'      => 'POST',
+			'timeout'     => 45,
+			'headers'     => array(
+				'Content-Type' => 'application/json',
+			),
+			'body'        => json_encode( $payload ),
+			'data_format' => 'body',
+		) );
+		
+		if ( is_wp_error( $response ) ) {
+			error_log( 'AKS Pabbly Update Webhook: Error sending to webhook - ' . $response->get_error_message() );
+		} else {
+			$response_code = wp_remote_retrieve_response_code( $response );
+			$response_body = wp_remote_retrieve_body( $response );
+			error_log( 'AKS Pabbly Update Webhook: Sent successfully - HTTP ' . $response_code . ' - ' . $response_body );
+		}
 	}
 
 	/**
@@ -769,10 +1075,13 @@ class AKS_User_Registration_Handler {
 		// Get the form object
 		$form = GFAPI::get_form( 3 );
 		
-		// Call the send_to_docuseal method with fresh entry
-		$docuseal->send_to_docuseal( $fresh_entry, $form );
+		// Call the send_to_docuseal method with fresh entry and regeneration flag
+		$docuseal->send_to_docuseal( $fresh_entry, $form, true );
 
 		error_log( 'AKS DocuSeal Regeneration: Triggered DocuSeal generation for user ' . $user_id );
+		
+		// Send updated data to Pabbly webhook
+		$this->send_to_pabbly_update_webhook( $fresh_entry, $form, $user_id );
 	}
 
 	/**

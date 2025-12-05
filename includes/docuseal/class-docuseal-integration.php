@@ -118,7 +118,7 @@ class AKS_DocuSeal_Integration {
 <p>Student Names and Birthdays:<br /><text-field style="width: 250px; height: 120px; display: inline-block;"></text-field></p>
 <p>Name of account owner: ACCOUNT-OWNER</p>
 <p>Account email: ACCOUNT-EMAIL</p>
-<p>Parent/Guardian\'s Name: <text-field style="width: 250px; height:50px; display: inline-block;"></text-field><br />
+<p>Parent/Guardian\'s Name: PARENT-NAME<br />
 Parent/Guardian\'s Email: PARENT-EMAIL</p>
 <signature-field style="width: 250px; height: 120px; display: inline-block;"></signature-field>';
     }
@@ -129,8 +129,9 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
      *
      * @param array $entry Gravity Forms entry
      * @param array $form  Gravity Forms form object
+     * @param bool  $is_regeneration Whether this is a regeneration (true) or initial submission (false)
      */
-    public function send_to_docuseal($entry, $form) {
+    public function send_to_docuseal($entry, $form, $is_regeneration = false) {
         try {
             // Get API token from settings
             $settings = get_option('aks_docuseal_settings');
@@ -235,15 +236,22 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
             // Determine if parent/guardian and set template accordingly
             $is_parent = ($is_parent_guardian === 'Yes');
             
+            // Determine template name suffix based on whether this is initial or regeneration
+            if ($is_regeneration) {
+                $base_suffix = 'Update';
+            } else {
+                $base_suffix = 'Initial';
+            }
+            
             // Get HTML template from settings
             if (!$is_parent && !empty($guardian_email)) {
                 $html_template = $this->get_guardian_template();
                 $send_to_email = $guardian_email;
-                $template_name_suffix = 'Guardian Update';
+                $template_name_suffix = 'Guardian ' . $base_suffix;
             } else {
                 $html_template = get_option($this->option_name, $this->get_default_template());
                 $send_to_email = $email;
-                $template_name_suffix = 'Update';
+                $template_name_suffix = $base_suffix;
             }
             
             // Replace placeholders
