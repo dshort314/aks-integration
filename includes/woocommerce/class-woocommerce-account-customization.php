@@ -16,8 +16,9 @@ class AKS_WooCommerce_Account_Customization {
         'lessons'        => 'lessons',
         'documents'      => 'documents',
         'videos'         => 'videos',
+        'store_account'  => 'store-account',
         'purchases'      => 'purchases',
-        'store_credit'   => 'store-credit',
+        'gift_cards'     => 'gift-cards',
         'announcements'  => 'announcements',
         'delete_account' => 'delete-account',
     ];
@@ -75,6 +76,35 @@ class AKS_WooCommerce_Account_Customization {
             10,
             1
         );
+        
+        // Kill the display name validation error
+        add_action('woocommerce_save_account_details_errors', array($this, 'remove_display_name_error'), 10, 2);
+    }
+    
+    /**
+     * Remove the display name email validation error completely
+     */
+    public function remove_display_name_error($errors, $user) {
+        // Get all error codes
+        $error_codes = $errors->get_error_codes();
+        
+        // Remove any error containing 'display_name'
+        foreach ($error_codes as $code) {
+            if (strpos($code, 'display_name') !== false) {
+                $errors->remove($code);
+            }
+        }
+        
+        // Also check error messages and remove the specific privacy concern error
+        foreach ($error_codes as $code) {
+            $messages = $errors->get_error_messages($code);
+            foreach ($messages as $message) {
+                if (strpos($message, 'Display name cannot be changed') !== false) {
+                    $errors->remove($code);
+                    break;
+                }
+            }
+        }
     }
     
     /**
@@ -94,8 +124,9 @@ class AKS_WooCommerce_Account_Customization {
         add_action('woocommerce_account_' . $this->endpoints['lessons'] . '_endpoint', array($this, 'render_lessons'));
         add_action('woocommerce_account_' . $this->endpoints['documents'] . '_endpoint', array($this, 'render_documents'));
         add_action('woocommerce_account_' . $this->endpoints['videos'] . '_endpoint', array($this, 'render_videos'));
+        add_action('woocommerce_account_' . $this->endpoints['store_account'] . '_endpoint', array($this, 'render_store_account'));
         add_action('woocommerce_account_' . $this->endpoints['purchases'] . '_endpoint', array($this, 'render_purchases'));
-        add_action('woocommerce_account_' . $this->endpoints['store_credit'] . '_endpoint', array($this, 'render_store_credit'));
+        add_action('woocommerce_account_' . $this->endpoints['gift_cards'] . '_endpoint', array($this, 'render_gift_cards'));
         add_action('woocommerce_account_' . $this->endpoints['announcements'] . '_endpoint', array($this, 'render_announcements'));
         add_action('woocommerce_account_' . $this->endpoints['delete_account'] . '_endpoint', array($this, 'render_delete_account'));
     }
@@ -181,6 +212,62 @@ class AKS_WooCommerce_Account_Customization {
                 background: #135e96;
                 color: #fff;
             }
+            
+            /* Parent tab sub-menu styles (Lessons, Store Account, Profile) */
+            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--lessons,
+            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--store-account,
+            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--edit-account {
+                position: relative;
+            }
+            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--lessons .aks-submenu,
+            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--store-account .aks-submenu,
+            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--edit-account .aks-submenu {
+                display: none;
+                position: absolute;
+                left: 100%;
+                top: 0;
+                background: #fff;
+                border: 1px solid #ddd;
+                min-width: 200px;
+                box-shadow: 2px 2px 8px rgba(0,0,0,0.1);
+                z-index: 1000;
+            }
+            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--lessons:hover .aks-submenu,
+            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--store-account:hover .aks-submenu,
+            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--edit-account:hover .aks-submenu {
+                display: block;
+            }
+            /* Remove link styling from parent tabs */
+            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--lessons > a,
+            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--store-account > a,
+            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--edit-account > a {
+                cursor: default;
+                pointer-events: none;
+            }
+            .aks-submenu {
+                list-style: none;
+                margin: 0;
+                padding: 0;
+            }
+            .aks-submenu li {
+                margin: 0;
+                padding: 0;
+                border-bottom: 1px solid #eee;
+            }
+            .aks-submenu li:last-child {
+                border-bottom: none;
+            }
+            .aks-submenu li a {
+                display: block;
+                padding: 10px 15px;
+                text-decoration: none;
+                color: #333;
+                transition: background 0.2s;
+                pointer-events: auto;
+            }
+            .aks-submenu li a:hover {
+                background: #f7f7f7;
+            }
         ');
 
         // Add modal JavaScript
@@ -213,6 +300,51 @@ class AKS_WooCommerce_Account_Customization {
                         window.location.href = "' . esc_js(wc_get_endpoint_url('students', '', wc_get_page_permalink('myaccount'))) . '";
                     }
                 });
+                
+                // Add Lessons submenu if conditions are met
+                var lessonsLink = $(".woocommerce-MyAccount-navigation-link--lessons");
+                if (lessonsLink.length && !lessonsLink.find(".aks-submenu").length) {
+                    // Check if we should show submenu (not on waiver incomplete page)
+                    var lessonsContent = $(".woocommerce-MyAccount-content");
+                    var hasWaiverMessage = lessonsContent.find(".woocommerce-message--info:contains(\'waiver\')").length > 0;
+                    
+                    if (!hasWaiverMessage) {
+                        var submenu = \'<ul class="aks-submenu">\' +
+                            \'<li><a href="' . esc_js(wc_get_endpoint_url('lessons', 'evaluation-training', wc_get_page_permalink('myaccount'))) . '">Evaluation & Training Lessons</a></li>\' +
+                            \'<li><a href="' . esc_js(wc_get_endpoint_url('lessons', 'purchase-bundle', wc_get_page_permalink('myaccount'))) . '">Purchase Bundle</a></li>\' +
+                            \'<li><a href="' . esc_js(wc_get_endpoint_url('lessons', 'manage-lessons', wc_get_page_permalink('myaccount'))) . '">Manage Lessons</a></li>\' +
+                            \'</ul>\';
+                        lessonsLink.append(submenu);
+                    }
+                }
+                
+                // Add Store Account submenu
+                var storeAccountLink = $(".woocommerce-MyAccount-navigation-link--store-account");
+                if (storeAccountLink.length && !storeAccountLink.find(".aks-submenu").length) {
+                    var storeSubmenu = \'<ul class="aks-submenu">\' +
+                        \'<li><a href="' . esc_js(wc_get_endpoint_url('purchases', '', wc_get_page_permalink('myaccount'))) . '">Purchases</a></li>\' +
+                        \'<li><a href="' . esc_js(wc_get_endpoint_url('payment-methods', '', wc_get_page_permalink('myaccount'))) . '">Payment Methods</a></li>\' +
+                        \'<li><a href="' . esc_js(wc_get_endpoint_url('gift-cards', '', wc_get_page_permalink('myaccount'))) . '">Gift Cards</a></li>\' +
+                        \'</ul>\';
+                    storeAccountLink.append(storeSubmenu);
+                    
+                    // Hide the individual tabs from main menu
+                    $(".woocommerce-MyAccount-navigation-link--purchases, .woocommerce-MyAccount-navigation-link--payment-methods, .woocommerce-MyAccount-navigation-link--gift-cards").hide();
+                }
+                
+                // Add Profile submenu
+                var profileLink = $(".woocommerce-MyAccount-navigation-link--edit-account");
+                if (profileLink.length && !profileLink.find(".aks-submenu").length) {
+                    var profileSubmenu = \'<ul class="aks-submenu">\' +
+                        \'<li><a href="' . esc_js(wc_get_endpoint_url('edit-address', '', wc_get_page_permalink('myaccount'))) . '">Addresses</a></li>\' +
+                        \'<li><a href="' . esc_js(wc_get_endpoint_url('edit-account', '', wc_get_page_permalink('myaccount'))) . '">Update Profile</a></li>\' +
+                        \'<li><a href="' . esc_js(wc_get_endpoint_url('delete-account', '', wc_get_page_permalink('myaccount'))) . '">Delete Account</a></li>\' +
+                        \'</ul>\';
+                    profileLink.append(profileSubmenu);
+                    
+                    // Hide the individual tabs from main menu
+                    $(".woocommerce-MyAccount-navigation-link--edit-address, .woocommerce-MyAccount-navigation-link--delete-account").hide();
+                }
             });
         ');
     }
@@ -232,21 +364,33 @@ class AKS_WooCommerce_Account_Customization {
         // Students (always show)
         $new[$this->endpoints['students']] = __('Students', 'aks-integration');
         
-        // Lessons (always show; content gated inside)
+        // Lessons (no link, only sub-tabs - handled by CSS/JS)
         $new[$this->endpoints['lessons']] = __('Lessons', 'aks-integration');
         
         // Rest of items
         $new[$this->endpoints['documents']]      = __('Waiver & Documents', 'aks-integration');
         $new[$this->endpoints['videos']]         = __('Videos', 'aks-integration');
+        
+        // Store Account (new parent tab - no link, only sub-tabs)
+        $new[$this->endpoints['store_account']] = __('Store Account', 'aks-integration');
+        
+        // Store Account sub-tabs (will be moved under Store Account via CSS/JS)
         $new[$this->endpoints['purchases']]      = __('Purchases', 'aks-integration');
-        $new['edit-address']                     = __('Addresses', 'woocommerce');
         $new['payment-methods']                  = __('Payment Methods', 'woocommerce');
+        $new[$this->endpoints['gift_cards']]     = __('Gift Cards', 'aks-integration');
+        
+        // Profile (parent tab - no link, only sub-tabs - handled by CSS/JS)
         $new['edit-account']                     = __('Profile', 'aks-integration');
-        $new[$this->endpoints['store_credit']]   = __('Store Credit', 'aks-integration');
+        
+        // Profile sub-tabs (will be moved under Profile via CSS/JS)
+        // Note: edit-address, edit-account, and delete-account are added here
+        // but JavaScript will hide them from main menu and show in submenu
+        $new['edit-address']                     = __('Addresses', 'woocommerce');
         $new[$this->endpoints['delete_account']] = __('Delete Account', 'woocommerce');
+        
         $new['customer-logout']                  = __('Logout', 'woocommerce');
         
-        // Remove originals we've consolidated and Delete Account
+        // Remove originals we've consolidated
         unset($items['orders'], $items['downloads']);
         
         return $new;
@@ -359,9 +503,61 @@ class AKS_WooCommerce_Account_Customization {
             return;
         }
         
-        // Show booking interface
-        if (shortcode_exists('latepoint_book_form')) {
-            echo do_shortcode('[latepoint_book_form]');
+        // Check for sub-tab in URL
+        global $wp;
+        $sub_tab = isset($wp->query_vars['lessons']) ? $wp->query_vars['lessons'] : '';
+        
+        // Handle sub-tabs
+        if ($sub_tab === 'evaluation-training') {
+            $this->render_evaluation_training_content();
+        } elseif ($sub_tab === 'purchase-bundle') {
+            $this->render_purchase_bundle_content();
+        } elseif ($sub_tab === 'manage-lessons') {
+            $this->render_manage_lessons_content();
+        } else {
+            // Default lessons content - show booking interface
+            if (shortcode_exists('latepoint_book_form')) {
+                echo do_shortcode('[latepoint_book_form]');
+            }
+        }
+    }
+    
+    /**
+     * Render Evaluation & Training Lessons content
+     */
+    private function render_evaluation_training_content() {
+        $content = get_option('aks_account_tab_evaluation_training', '');
+        
+        if (!empty($content)) {
+            echo apply_filters('the_content', $content);
+        } else {
+            echo '<p>Evaluation & Training Lessons content has not been configured yet.</p>';
+        }
+    }
+    
+    /**
+     * Render Purchase Bundle content
+     */
+    private function render_purchase_bundle_content() {
+        $content = get_option('aks_account_tab_purchase_bundle', '');
+        
+        if (!empty($content)) {
+            echo apply_filters('the_content', $content);
+        } else {
+            echo '<p>Purchase Bundle content has not been configured yet.</p>';
+        }
+    }
+    
+    /**
+     * Render Manage Lessons content
+     */
+    private function render_manage_lessons_content() {
+        $content = get_option('aks_account_tab_manage_lessons', '');
+        
+        if (!empty($content)) {
+            echo apply_filters('the_content', $content);
+        } else {
+            echo '<p>Manage Lessons content has not been configured yet.</p>';
         }
     }
     
@@ -418,15 +614,14 @@ class AKS_WooCommerce_Account_Customization {
     public function render_videos() {
         $this->heading(__('Videos', 'aks-integration'));
         
-        // Get the /video-library/ page content
-        $video_library_page = get_page_by_path('video-library');
+        // Get custom content from admin panel
+        $custom_content = get_option('aks_account_tab_videos', '');
         
-        if ($video_library_page) {
-            // Apply content filters to process shortcodes and formatting
-            $content = apply_filters('the_content', $video_library_page->post_content);
-            echo $content;
+        if (!empty($custom_content)) {
+            // Use custom content from admin panel
+            echo apply_filters('the_content', $custom_content);
         } else {
-            echo '<p>' . esc_html__('Access your swim lesson videos here.', 'aks-integration') . '</p>';
+            echo '<p>' . esc_html__('Video content has not been configured yet.', 'aks-integration') . '</p>';
         }
     }
     
@@ -445,8 +640,16 @@ class AKS_WooCommerce_Account_Customization {
         }
     }
     
-    public function render_store_credit() {
-        $this->heading(__('Store Credit', 'aks-integration'));
+    public function render_store_account() {
+        $this->heading(__('Store Account', 'aks-integration'));
+        
+        echo '<div class="aks-wac-panel">';
+        echo '<p>' . esc_html__('Please select an option from the submenu above.', 'aks-integration') . '</p>';
+        echo '</div>';
+    }
+    
+    public function render_gift_cards() {
+        $this->heading(__('Gift Cards', 'aks-integration'));
         
         $user_id = get_current_user_id();
         $balance = get_user_meta($user_id, self::META_STORE_CREDIT, true);
@@ -634,22 +837,32 @@ class AKS_WooCommerce_Account_Customization {
     }
 
     /**
-     * PROFILE TAB: hide the email address field visually on Profile tab only.
+     * PROFILE TAB: Make name, display name, and email fields readonly
      */
     public function hide_profile_email_field() {
         if (!is_account_page() || !function_exists('is_wc_endpoint_url') || !is_wc_endpoint_url('edit-account')) {
             return;
         }
 
-        // Hide email, first name, last name, and display name fields
-        echo '<style>
-            .woocommerce-EditAccountForm p:has(#account_email),
-            .woocommerce-EditAccountForm p:has(#account_first_name),
-            .woocommerce-EditAccountForm p:has(#account_last_name),
-            .woocommerce-EditAccountForm p:has(#account_display_name) {
-                display: none !important;
+        // Make fields readonly and style them to look disabled
+        ?>
+        <style>
+            #account_email,
+            #account_first_name,
+            #account_last_name,
+            #account_display_name {
+                background-color: #f5f5f5 !important;
+                cursor: not-allowed !important;
+                opacity: 0.7;
             }
-        </style>';
+        </style>
+        <script type="text/javascript">
+        jQuery(document).ready(function($) {
+            // Make fields readonly
+            $("#account_email, #account_first_name, #account_last_name, #account_display_name").prop("readonly", true);
+        });
+        </script>
+        <?php
     }
 
     /**

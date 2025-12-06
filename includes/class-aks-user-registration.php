@@ -365,6 +365,11 @@ class AKS_User_Registration_Handler {
 					$student_last_name = rgar( $child_entry, '1.6' );
 					$student_birthdate = rgar( $child_entry, '3' );
 					
+					// Additional fields
+					$student_info = rgar( $child_entry, '4' ); // Info about student
+					$student_goals = rgar( $child_entry, '5' ); // Goals for lessons
+					$student_approach = rgar( $child_entry, '7' ); // How to work with student
+					
 					// Format birthdate from YYYY-MM-DD to MM/DD/YYYY
 					if ( $student_birthdate ) {
 						$date = DateTime::createFromFormat( 'Y-m-d', $student_birthdate );
@@ -377,6 +382,9 @@ class AKS_User_Registration_Handler {
 						'first_name' => $student_first_name,
 						'last_name' => $student_last_name,
 						'birthdate' => $student_birthdate,
+						'student_info' => $student_info,
+						'lesson_goals' => $student_goals,
+						'teaching_approach' => $student_approach,
 					);
 				}
 			}
@@ -513,6 +521,11 @@ class AKS_User_Registration_Handler {
 					$student_last_name = rgar( $child_entry, '1.6' );
 					$student_birthdate = rgar( $child_entry, '3' );
 					
+					// Additional fields
+					$student_info = rgar( $child_entry, '4' ); // Info about student
+					$student_goals = rgar( $child_entry, '5' ); // Goals for lessons
+					$student_approach = rgar( $child_entry, '7' ); // How to work with student
+					
 					// Format birthdate from YYYY-MM-DD to MM/DD/YYYY
 					if ( $student_birthdate ) {
 						$date = DateTime::createFromFormat( 'Y-m-d', $student_birthdate );
@@ -525,6 +538,9 @@ class AKS_User_Registration_Handler {
 						'first_name' => $student_first_name,
 						'last_name' => $student_last_name,
 						'birthdate' => $student_birthdate,
+						'student_info' => $student_info,
+						'lesson_goals' => $student_goals,
+						'teaching_approach' => $student_approach,
 					);
 				}
 			}

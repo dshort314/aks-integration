@@ -8,6 +8,7 @@
 class AKS_DocuSeal_Integration {
     
     private $option_name = 'aks_docuseal_html_template';
+    private $guardian_option_name = 'aks_docuseal_guardian_html_template';
     
     public function __construct() {
         // Hook into Gravity Forms submission for form 3
@@ -245,7 +246,7 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
             
             // Get HTML template from settings
             if (!$is_parent && !empty($guardian_email)) {
-                $html_template = $this->get_guardian_template();
+                $html_template = get_option($this->guardian_option_name, $this->get_guardian_template());
                 $send_to_email = $guardian_email;
                 $template_name_suffix = 'Guardian ' . $base_suffix;
             } else {
