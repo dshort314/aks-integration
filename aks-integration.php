@@ -143,6 +143,12 @@ class AKS_Integration {
                 require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-woocommerce-account-customization.php';
                 new AKS_WooCommerce_Account_Customization();
             }
+            
+            // Load Payment Discount Handler
+            if (file_exists(AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-payment-discount-handler.php')) {
+                require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-payment-discount-handler.php';
+                AKS_Payment_Discount_Handler::get_instance();
+            }
         }
     }
     

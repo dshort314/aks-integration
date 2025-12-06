@@ -9,6 +9,7 @@ class AKS_Integration_Admin_Menu {
     private $sendpulse_admin;
     private $docuseal_admin;
     private $account_tabs_admin;
+    private $payment_discount_handler;
     
     public function __construct() {
         add_action('admin_menu', array($this, 'add_admin_menu'));
@@ -38,6 +39,12 @@ class AKS_Integration_Admin_Menu {
         if (file_exists(AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-account-tabs-admin.php')) {
             require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-account-tabs-admin.php';
             $this->account_tabs_admin = AKS_Account_Tabs_Admin::get_instance();
+        }
+        
+        // Load and initialize Payment Discount Handler
+        if (file_exists(AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-payment-discount-handler.php')) {
+            require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-payment-discount-handler.php';
+            $this->payment_discount_handler = AKS_Payment_Discount_Handler::get_instance();
         }
     }
     
@@ -126,6 +133,16 @@ class AKS_Integration_Admin_Menu {
             array($this, 'videos_page')
         );
         
+        // Payment Discount submenu
+        add_submenu_page(
+            'aks-integration',                    // Parent slug
+            'Payment Discount',                   // Page title
+            'Payment Discount',                   // Menu title
+            'manage_options',                     // Capability
+            'aks-payment-discount',              // Menu slug
+            array($this, 'payment_discount_page')
+        );
+        
         // Remove duplicate main menu item
         remove_submenu_page('aks-integration', 'aks-integration');
     }
@@ -144,6 +161,7 @@ class AKS_Integration_Admin_Menu {
             'aks-integration_page_aks-account-tab-purchase',
             'aks-integration_page_aks-account-tab-manage',
             'aks-integration_page_aks-account-tab-videos',
+            'aks-integration_page_aks-payment-discount',
         );
         
         if (!in_array($hook, $aks_pages)) {
@@ -242,6 +260,17 @@ class AKS_Integration_Admin_Menu {
     public function videos_page() {
         if ($this->account_tabs_admin && method_exists($this->account_tabs_admin, 'render_videos_page')) {
             $this->account_tabs_admin->render_videos_page();
+        }
+    }
+    
+    /**
+     * Render Payment Discount page
+     */
+    public function payment_discount_page() {
+        if ($this->payment_discount_handler && method_exists($this->payment_discount_handler, 'render_settings_page')) {
+            $this->payment_discount_handler->render_settings_page();
+        } else {
+            echo '<div class="wrap"><h1>Payment Discount Settings</h1><p>Payment discount handler is not available.</p></div>';
         }
     }
 }
