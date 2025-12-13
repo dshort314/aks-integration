@@ -77,6 +77,14 @@ class AKS_WooCommerce_Account_Customization {
             1
         );
         
+        // Update Quo and SendPulse when phone changes
+        add_action(
+            'woocommerce_save_account_details',
+            array($this, 'update_crm_phone_number'),
+            20,
+            1
+        );
+        
         // Kill the display name validation error
         add_action('woocommerce_save_account_details_errors', array($this, 'remove_display_name_error'), 10, 2);
     }
@@ -219,36 +227,78 @@ class AKS_WooCommerce_Account_Customization {
             .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--edit-account {
                 position: relative;
             }
-            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--lessons .aks-submenu,
-            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--store-account .aks-submenu,
-            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--edit-account .aks-submenu {
-                display: none;
-                position: absolute;
-                left: 100%;
-                top: 0;
-                background: #fff;
-                border: 1px solid #ddd;
-                min-width: 200px;
-                box-shadow: 2px 2px 8px rgba(0,0,0,0.1);
-                z-index: 1000;
-            }
-            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--lessons:hover .aks-submenu,
-            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--store-account:hover .aks-submenu,
-            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--edit-account:hover .aks-submenu {
-                display: block;
-            }
-            /* Remove link styling from parent tabs */
+            
+            /* Parent tab links - make clickable on mobile */
             .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--lessons > a,
             .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--store-account > a,
             .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--edit-account > a {
-                cursor: default;
-                pointer-events: none;
+                cursor: pointer;
+                position: relative;
+                padding-right: 30px;
             }
+            
+            /* Add chevron indicator */
+            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--lessons > a:after,
+            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--store-account > a:after,
+            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--edit-account > a:after {
+                content: "▼";
+                position: absolute;
+                right: 10px;
+                top: 50%;
+                transform: translateY(-50%);
+                font-size: 10px;
+                transition: transform 0.2s;
+            }
+            
+            /* Rotate chevron when open */
+            .woocommerce-MyAccount-navigation ul li.aks-submenu-open > a:after {
+                transform: translateY(-50%) rotate(180deg);
+            }
+            
+            /* Submenu base styles */
             .aks-submenu {
+                display: none;
                 list-style: none;
                 margin: 0;
                 padding: 0;
+                background: #f7f7f7;
             }
+            
+            /* Desktop: submenu appears to the right on hover */
+            @media (min-width: 769px) {
+                .aks-submenu {
+                    position: absolute;
+                    left: 100%;
+                    top: 0;
+                    background: #fff;
+                    border: 1px solid #ddd;
+                    min-width: 200px;
+                    box-shadow: 2px 2px 8px rgba(0,0,0,0.1);
+                    z-index: 1000;
+                }
+                
+                .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--lessons:hover .aks-submenu,
+                .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--store-account:hover .aks-submenu,
+                .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--edit-account:hover .aks-submenu {
+                    display: block;
+                }
+            }
+            
+            /* Mobile: submenu appears below when toggled */
+            @media (max-width: 768px) {
+                .aks-submenu {
+                    position: relative;
+                    width: 100%;
+                    background: #f7f7f7;
+                    border-top: 1px solid #ddd;
+                    padding-left: 15px;
+                }
+                
+                .woocommerce-MyAccount-navigation ul li.aks-submenu-open .aks-submenu {
+                    display: block;
+                }
+            }
+            
             .aks-submenu li {
                 margin: 0;
                 padding: 0;
@@ -263,10 +313,9 @@ class AKS_WooCommerce_Account_Customization {
                 text-decoration: none;
                 color: #333;
                 transition: background 0.2s;
-                pointer-events: auto;
             }
             .aks-submenu li a:hover {
-                background: #f7f7f7;
+                background: #e9e9e9;
             }
         ');
 
@@ -301,50 +350,73 @@ class AKS_WooCommerce_Account_Customization {
                     }
                 });
                 
+                // Mobile/Desktop toggle functionality for parent tabs
+                function setupSubmenuToggle(parentSelector, submenuItems) {
+                    var parentLink = $(parentSelector);
+                    
+                    if (parentLink.length && !parentLink.find(".aks-submenu").length) {
+                        var submenu = $("<ul class=\"aks-submenu\"></ul>");
+                        
+                        submenuItems.forEach(function(item) {
+                            submenu.append("<li><a href=\"" + item.url + "\">" + item.label + "</a></li>");
+                        });
+                        
+                        parentLink.append(submenu);
+                        
+                        // Click handler for parent link (mobile toggle)
+                        parentLink.find("> a").on("click", function(e) {
+                            // Only prevent default and toggle on mobile/tablet
+                            if (window.innerWidth <= 768) {
+                                e.preventDefault();
+                                parentLink.toggleClass("aks-submenu-open");
+                                // Close other open submenus
+                                $(".woocommerce-MyAccount-navigation-link").not(parentLink).removeClass("aks-submenu-open");
+                            }
+                        });
+                    }
+                }
+                
                 // Add Lessons submenu if conditions are met
                 var lessonsLink = $(".woocommerce-MyAccount-navigation-link--lessons");
-                if (lessonsLink.length && !lessonsLink.find(".aks-submenu").length) {
-                    // Check if we should show submenu (not on waiver incomplete page)
+                if (lessonsLink.length) {
                     var lessonsContent = $(".woocommerce-MyAccount-content");
                     var hasWaiverMessage = lessonsContent.find(".woocommerce-message--info:contains(\'waiver\')").length > 0;
                     
                     if (!hasWaiverMessage) {
-                        var submenu = \'<ul class="aks-submenu">\' +
-                            \'<li><a href="' . esc_js(wc_get_endpoint_url('lessons', 'evaluation-training', wc_get_page_permalink('myaccount'))) . '">Evaluation & Training Lessons</a></li>\' +
-                            \'<li><a href="' . esc_js(wc_get_endpoint_url('lessons', 'purchase-bundle', wc_get_page_permalink('myaccount'))) . '">Purchase Bundle</a></li>\' +
-                            \'<li><a href="' . esc_js(wc_get_endpoint_url('lessons', 'manage-lessons', wc_get_page_permalink('myaccount'))) . '">Manage Lessons</a></li>\' +
-                            \'</ul>\';
-                        lessonsLink.append(submenu);
+                        setupSubmenuToggle(".woocommerce-MyAccount-navigation-link--lessons", [
+                            { url: "' . esc_js(wc_get_endpoint_url('lessons', 'evaluation-training', wc_get_page_permalink('myaccount'))) . '", label: "Evaluation & Training Lessons" },
+                            { url: "' . esc_js(wc_get_endpoint_url('lessons', 'purchase-bundle', wc_get_page_permalink('myaccount'))) . '", label: "Purchase Bundle" },
+                            { url: "' . esc_js(wc_get_endpoint_url('lessons', 'manage-lessons', wc_get_page_permalink('myaccount'))) . '", label: "Manage Lessons" }
+                        ]);
                     }
                 }
                 
                 // Add Store Account submenu
-                var storeAccountLink = $(".woocommerce-MyAccount-navigation-link--store-account");
-                if (storeAccountLink.length && !storeAccountLink.find(".aks-submenu").length) {
-                    var storeSubmenu = \'<ul class="aks-submenu">\' +
-                        \'<li><a href="' . esc_js(wc_get_endpoint_url('purchases', '', wc_get_page_permalink('myaccount'))) . '">Purchases</a></li>\' +
-                        \'<li><a href="' . esc_js(wc_get_endpoint_url('payment-methods', '', wc_get_page_permalink('myaccount'))) . '">Payment Methods</a></li>\' +
-                        \'<li><a href="' . esc_js(wc_get_endpoint_url('gift-cards', '', wc_get_page_permalink('myaccount'))) . '">Gift Cards</a></li>\' +
-                        \'</ul>\';
-                    storeAccountLink.append(storeSubmenu);
-                    
-                    // Hide the individual tabs from main menu
-                    $(".woocommerce-MyAccount-navigation-link--purchases, .woocommerce-MyAccount-navigation-link--payment-methods, .woocommerce-MyAccount-navigation-link--gift-cards").hide();
-                }
+                setupSubmenuToggle(".woocommerce-MyAccount-navigation-link--store-account", [
+                    { url: "' . esc_js(wc_get_endpoint_url('purchases', '', wc_get_page_permalink('myaccount'))) . '", label: "Purchases" },
+                    { url: "' . esc_js(wc_get_endpoint_url('payment-methods', '', wc_get_page_permalink('myaccount'))) . '", label: "Payment Methods" },
+                    { url: "' . esc_js(wc_get_endpoint_url('gift-cards', '', wc_get_page_permalink('myaccount'))) . '", label: "Gift Cards" }
+                ]);
+                
+                // Hide the individual tabs from main menu
+                $(".woocommerce-MyAccount-navigation-link--purchases, .woocommerce-MyAccount-navigation-link--payment-methods, .woocommerce-MyAccount-navigation-link--gift-cards").hide();
                 
                 // Add Profile submenu
-                var profileLink = $(".woocommerce-MyAccount-navigation-link--edit-account");
-                if (profileLink.length && !profileLink.find(".aks-submenu").length) {
-                    var profileSubmenu = \'<ul class="aks-submenu">\' +
-                        \'<li><a href="' . esc_js(wc_get_endpoint_url('edit-address', '', wc_get_page_permalink('myaccount'))) . '">Addresses</a></li>\' +
-                        \'<li><a href="' . esc_js(wc_get_endpoint_url('edit-account', '', wc_get_page_permalink('myaccount'))) . '">Update Profile</a></li>\' +
-                        \'<li><a href="' . esc_js(wc_get_endpoint_url('delete-account', '', wc_get_page_permalink('myaccount'))) . '">Delete Account</a></li>\' +
-                        \'</ul>\';
-                    profileLink.append(profileSubmenu);
-                    
-                    // Hide the individual tabs from main menu
-                    $(".woocommerce-MyAccount-navigation-link--edit-address, .woocommerce-MyAccount-navigation-link--delete-account").hide();
-                }
+                setupSubmenuToggle(".woocommerce-MyAccount-navigation-link--edit-account", [
+                    { url: "' . esc_js(wc_get_endpoint_url('edit-address', '', wc_get_page_permalink('myaccount'))) . '", label: "Addresses" },
+                    { url: "' . esc_js(wc_get_endpoint_url('edit-account', '', wc_get_page_permalink('myaccount'))) . '", label: "Update Profile" },
+                    { url: "' . esc_js(wc_get_endpoint_url('delete-account', '', wc_get_page_permalink('myaccount'))) . '", label: "Delete Account" }
+                ]);
+                
+                // Hide the individual tabs from main menu
+                $(".woocommerce-MyAccount-navigation-link--edit-address, .woocommerce-MyAccount-navigation-link--delete-account").hide();
+                
+                // Close submenus when clicking outside
+                $(document).on("click", function(e) {
+                    if (!$(e.target).closest(".woocommerce-MyAccount-navigation-link").length) {
+                        $(".woocommerce-MyAccount-navigation-link").removeClass("aks-submenu-open");
+                    }
+                });
             });
         ');
     }
@@ -891,6 +963,239 @@ class AKS_WooCommerce_Account_Customization {
             }
 
             update_user_meta($user_id, 'billing_phone', $phone);
+        }
+    }
+    
+    /**
+     * Update Quo and SendPulse when phone number changes
+     */
+    public function update_crm_phone_number($user_id) {
+        error_log('=== CRM Phone Update: START ===');
+        error_log('CRM Update: User ID: ' . $user_id);
+        
+        if (!$user_id) {
+            return;
+        }
+        
+        if (!isset($_POST['billing_phone'])) {
+            error_log('CRM Update: No billing_phone in POST');
+            return;
+        }
+        
+        $new_phone_raw = wp_unslash($_POST['billing_phone']);
+        $new_digits = preg_replace('/\D+/', '', (string) $new_phone_raw);
+        
+        error_log('CRM Update: New phone: "' . $new_phone_raw . '" -> digits: "' . $new_digits . '"');
+        
+        if (strlen($new_digits) !== 10) {
+            error_log('CRM Update: Not 10 digits, skipping');
+            return;
+        }
+        
+        // Format phone
+        $formatted_phone = sprintf(
+            '(%s) %s-%s',
+            substr($new_digits, 0, 3),
+            substr($new_digits, 3, 3),
+            substr($new_digits, 6, 4)
+        );
+        
+        // Get user details
+        $user = get_userdata($user_id);
+        if (!$user) {
+            error_log('CRM Update: User not found');
+            return;
+        }
+        
+        // Get stored CRM IDs
+        $sendpulse_contact_id = get_user_meta($user_id, 'sendpulse_contact_id', true);
+        $sendpulse_phone_id = get_user_meta($user_id, 'sendpulse_phone_id', true);
+        $quo_contact_id = get_user_meta($user_id, 'quo_contact_id', true);
+        $quo_phone_id = get_user_meta($user_id, 'quo_phone_id', true);
+        
+        error_log('CRM Update: SendPulse Contact ID: ' . $sendpulse_contact_id . ', Phone ID: ' . $sendpulse_phone_id);
+        error_log('CRM Update: Quo Contact ID: ' . $quo_contact_id . ', Phone ID: ' . $quo_phone_id);
+        
+        // Update SendPulse
+        if (!empty($sendpulse_contact_id) && !empty($sendpulse_phone_id)) {
+            $this->update_sendpulse_phone($sendpulse_contact_id, $sendpulse_phone_id, $formatted_phone);
+        } else {
+            error_log('CRM Update: Missing SendPulse IDs, skipping SendPulse update');
+        }
+        
+        // Update Quo
+        if (!empty($quo_contact_id) && !empty($quo_phone_id)) {
+            $this->update_quo_phone($quo_contact_id, $quo_phone_id, $formatted_phone, $user->first_name, $user->last_name);
+        } else {
+            error_log('CRM Update: Missing Quo IDs, skipping Quo update');
+        }
+        
+        error_log('=== CRM Phone Update: END ===');
+    }
+    
+    /**
+     * Update phone number in SendPulse using PUT /contacts/{contactId}/phones/{phoneId}
+     */
+    private function update_sendpulse_phone($contact_id, $phone_id, $phone) {
+        error_log('SendPulse Update: Updating contact ' . $contact_id . ', phone ID ' . $phone_id);
+        
+        // Get settings
+        $settings = get_option('aks_sendpulse_settings');
+        if (empty($settings['api_id']) || empty($settings['api_secret'])) {
+            error_log('SendPulse Update: API credentials not configured');
+            return;
+        }
+        
+        // Load SendPulse API to get access token
+        if (!class_exists('AKS_SendPulse_API')) {
+            require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/sendpulse/class-sendpulse-api.php';
+        }
+        
+        $api = new AKS_SendPulse_API($settings['api_id'], $settings['api_secret']);
+        
+        // Use reflection to call private get_access_token method
+        $reflection = new ReflectionClass($api);
+        $method = $reflection->getMethod('get_access_token');
+        $method->setAccessible(true);
+        $access_token = $method->invoke($api);
+        
+        if (!$access_token) {
+            error_log('SendPulse Update: Failed to get access token');
+            return;
+        }
+        
+        // Format phone for SendPulse (1 + 10 digits)
+        $phone_digits = preg_replace('/\D+/', '', $phone);
+        if (strlen($phone_digits) === 10) {
+            $phone_sendpulse = '1' . $phone_digits;
+        } else {
+            $phone_sendpulse = $phone_digits;
+        }
+        
+        error_log('SendPulse Update: Formatted phone: ' . $phone_sendpulse);
+        
+        $url = 'https://api.sendpulse.com/crm/v1/contacts/' . $contact_id . '/phones/' . $phone_id;
+        
+        $body = array(
+            'phone' => $phone_sendpulse
+        );
+        
+        error_log('SendPulse Update: PUT to ' . $url);
+        error_log('SendPulse Update: Body: ' . json_encode($body));
+        
+        $curl = curl_init();
+        curl_setopt_array($curl, array(
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_ENCODING => '',
+            CURLOPT_MAXREDIRS => 10,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+            CURLOPT_CUSTOMREQUEST => 'PUT',
+            CURLOPT_POSTFIELDS => json_encode($body),
+            CURLOPT_HTTPHEADER => array(
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $access_token
+            ),
+        ));
+        
+        $response_body = curl_exec($curl);
+        $response_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+        $curl_error = curl_error($curl);
+        curl_close($curl);
+        
+        if ($curl_error) {
+            error_log('SendPulse Update: cURL Error - ' . $curl_error);
+            return;
+        }
+        
+        error_log('SendPulse Update: HTTP ' . $response_code . ' - Response: ' . $response_body);
+        
+        if ($response_code >= 200 && $response_code < 300) {
+            error_log('SendPulse Update: Phone updated successfully');
+        } else {
+            error_log('SendPulse Update: Update failed with HTTP ' . $response_code);
+        }
+    }
+    
+    /**
+     * Update phone number in Quo using PATCH /contacts/{id}
+     */
+    private function update_quo_phone($contact_id, $phone_id, $phone, $first_name, $last_name) {
+        error_log('Quo Update: Updating contact ' . $contact_id . ', phone ID ' . $phone_id);
+        
+        // Get settings
+        $settings = get_option('aks_sendpulse_settings');
+        if (empty($settings['quo_api_key'])) {
+            error_log('Quo Update: API key not configured');
+            return;
+        }
+        
+        // Format phone to E.164 (+1XXXXXXXXXX)
+        $phone_digits = preg_replace('/\D+/', '', $phone);
+        if (strlen($phone_digits) === 10) {
+            $phone_e164 = '+1' . $phone_digits;
+        } elseif (strlen($phone_digits) === 11 && substr($phone_digits, 0, 1) === '1') {
+            $phone_e164 = '+' . $phone_digits;
+        } else {
+            $phone_e164 = '+' . $phone_digits;
+        }
+        
+        error_log('Quo Update: Formatted phone: ' . $phone_e164);
+        
+        $url = 'https://api.openphone.com/v1/contacts/' . $contact_id;
+        
+        $body = array(
+            'defaultFields' => array(
+                'firstName' => $first_name,
+                'lastName' => $last_name,
+                'phoneNumbers' => array(
+                    array(
+                        'id' => $phone_id,
+                        'name' => 'mobile',
+                        'value' => $phone_e164
+                    )
+                )
+            )
+        );
+        
+        error_log('Quo Update: PATCH to ' . $url);
+        error_log('Quo Update: Body: ' . json_encode($body));
+        
+        $curl = curl_init();
+        curl_setopt_array($curl, array(
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_ENCODING => '',
+            CURLOPT_MAXREDIRS => 10,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+            CURLOPT_CUSTOMREQUEST => 'PATCH',
+            CURLOPT_POSTFIELDS => json_encode($body),
+            CURLOPT_HTTPHEADER => array(
+                'Content-Type: application/json',
+                'Authorization: ' . $settings['quo_api_key']
+            ),
+        ));
+        
+        $response_body = curl_exec($curl);
+        $response_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+        $curl_error = curl_error($curl);
+        curl_close($curl);
+        
+        if ($curl_error) {
+            error_log('Quo Update: cURL Error - ' . $curl_error);
+            return;
+        }
+        
+        error_log('Quo Update: HTTP ' . $response_code . ' - Response: ' . $response_body);
+        
+        if ($response_code >= 200 && $response_code < 300) {
+            error_log('Quo Update: Phone updated successfully');
+        } else {
+            error_log('Quo Update: Update failed with HTTP ' . $response_code);
         }
     }
     

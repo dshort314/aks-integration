@@ -149,6 +149,12 @@ class AKS_Integration {
                 require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-payment-discount-handler.php';
                 AKS_Payment_Discount_Handler::get_instance();
             }
+            
+            // Load Donated Lessons Handler
+            if (file_exists(AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-donated-lessons-handler.php')) {
+                require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-donated-lessons-handler.php';
+                AKS_Donated_Lessons_Handler::get_instance();
+            }
         }
     }
     

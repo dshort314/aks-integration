@@ -10,6 +10,7 @@ class AKS_Integration_Admin_Menu {
     private $docuseal_admin;
     private $account_tabs_admin;
     private $payment_discount_handler;
+    private $donated_lessons_handler;
     
     public function __construct() {
         add_action('admin_menu', array($this, 'add_admin_menu'));
@@ -45,6 +46,12 @@ class AKS_Integration_Admin_Menu {
         if (file_exists(AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-payment-discount-handler.php')) {
             require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-payment-discount-handler.php';
             $this->payment_discount_handler = AKS_Payment_Discount_Handler::get_instance();
+        }
+        
+        // Load and initialize Donated Lessons Handler
+        if (file_exists(AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-donated-lessons-handler.php')) {
+            require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-donated-lessons-handler.php';
+            $this->donated_lessons_handler = AKS_Donated_Lessons_Handler::get_instance();
         }
     }
     
@@ -143,6 +150,16 @@ class AKS_Integration_Admin_Menu {
             array($this, 'payment_discount_page')
         );
         
+        // Donated Lessons submenu
+        add_submenu_page(
+            'aks-integration',                    // Parent slug
+            'Donated Lessons',                    // Page title
+            'Donated Lessons',                    // Menu title
+            'manage_options',                     // Capability
+            'aks-donated-lessons',               // Menu slug
+            array($this, 'donated_lessons_page')
+        );
+        
         // Remove duplicate main menu item
         remove_submenu_page('aks-integration', 'aks-integration');
     }
@@ -162,6 +179,7 @@ class AKS_Integration_Admin_Menu {
             'aks-integration_page_aks-account-tab-manage',
             'aks-integration_page_aks-account-tab-videos',
             'aks-integration_page_aks-payment-discount',
+            'aks-integration_page_aks-donated-lessons',
         );
         
         if (!in_array($hook, $aks_pages)) {
@@ -271,6 +289,17 @@ class AKS_Integration_Admin_Menu {
             $this->payment_discount_handler->render_settings_page();
         } else {
             echo '<div class="wrap"><h1>Payment Discount Settings</h1><p>Payment discount handler is not available.</p></div>';
+        }
+    }
+    
+    /**
+     * Render Donated Lessons page
+     */
+    public function donated_lessons_page() {
+        if ($this->donated_lessons_handler && method_exists($this->donated_lessons_handler, 'render_settings_page')) {
+            $this->donated_lessons_handler->render_settings_page();
+        } else {
+            echo '<div class="wrap"><h1>Donated Lessons Tracker</h1><p>Donated lessons handler is not available.</p></div>';
         }
     }
 }
