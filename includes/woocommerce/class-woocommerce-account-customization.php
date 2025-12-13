@@ -229,10 +229,16 @@ class AKS_WooCommerce_Account_Customization {
             }
             
             /* Parent tab links - make clickable on mobile */
-            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--lessons > a,
             .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--store-account > a,
             .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--edit-account > a {
                 cursor: pointer;
+                position: relative;
+                padding-right: 30px;
+            }
+            
+            /* Lessons parent link - not clickable, just for hover */
+            .woocommerce-MyAccount-navigation ul li.woocommerce-MyAccount-navigation-link--lessons > a {
+                cursor: default;
                 position: relative;
                 padding-right: 30px;
             }
@@ -351,7 +357,7 @@ class AKS_WooCommerce_Account_Customization {
                 });
                 
                 // Mobile/Desktop toggle functionality for parent tabs
-                function setupSubmenuToggle(parentSelector, submenuItems) {
+                function setupSubmenuToggle(parentSelector, submenuItems, preventParentClick) {
                     var parentLink = $(parentSelector);
                     
                     if (parentLink.length && !parentLink.find(".aks-submenu").length) {
@@ -363,32 +369,37 @@ class AKS_WooCommerce_Account_Customization {
                         
                         parentLink.append(submenu);
                         
-                        // Click handler for parent link (mobile toggle)
+                        // Click handler for parent link
                         parentLink.find("> a").on("click", function(e) {
-                            // Only prevent default and toggle on mobile/tablet
-                            if (window.innerWidth <= 768) {
+                            // If preventParentClick is true, always prevent default (desktop and mobile)
+                            if (preventParentClick === true) {
                                 e.preventDefault();
-                                parentLink.toggleClass("aks-submenu-open");
-                                // Close other open submenus
-                                $(".woocommerce-MyAccount-navigation-link").not(parentLink).removeClass("aks-submenu-open");
+                                if (window.innerWidth <= 768) {
+                                    parentLink.toggleClass("aks-submenu-open");
+                                    // Close other open submenus
+                                    $(".woocommerce-MyAccount-navigation-link").not(parentLink).removeClass("aks-submenu-open");
+                                }
+                            } else {
+                                // Only prevent default and toggle on mobile/tablet
+                                if (window.innerWidth <= 768) {
+                                    e.preventDefault();
+                                    parentLink.toggleClass("aks-submenu-open");
+                                    // Close other open submenus
+                                    $(".woocommerce-MyAccount-navigation-link").not(parentLink).removeClass("aks-submenu-open");
+                                }
                             }
                         });
                     }
                 }
                 
-                // Add Lessons submenu if conditions are met
+                // Add Lessons submenu (always show if tab exists, parent not clickable)
                 var lessonsLink = $(".woocommerce-MyAccount-navigation-link--lessons");
                 if (lessonsLink.length) {
-                    var lessonsContent = $(".woocommerce-MyAccount-content");
-                    var hasWaiverMessage = lessonsContent.find(".woocommerce-message--info:contains(\'waiver\')").length > 0;
-                    
-                    if (!hasWaiverMessage) {
-                        setupSubmenuToggle(".woocommerce-MyAccount-navigation-link--lessons", [
-                            { url: "' . esc_js(wc_get_endpoint_url('lessons', 'evaluation-training', wc_get_page_permalink('myaccount'))) . '", label: "Evaluation & Training Lessons" },
-                            { url: "' . esc_js(wc_get_endpoint_url('lessons', 'purchase-bundle', wc_get_page_permalink('myaccount'))) . '", label: "Purchase Bundle" },
-                            { url: "' . esc_js(wc_get_endpoint_url('lessons', 'manage-lessons', wc_get_page_permalink('myaccount'))) . '", label: "Manage Lessons" }
-                        ]);
-                    }
+                    setupSubmenuToggle(".woocommerce-MyAccount-navigation-link--lessons", [
+                        { url: "' . esc_js(wc_get_endpoint_url('lessons', 'evaluation-training', wc_get_page_permalink('myaccount'))) . '", label: "Evaluation & Training Lessons" },
+                        { url: "' . esc_js(wc_get_endpoint_url('lessons', 'purchase-bundle', wc_get_page_permalink('myaccount'))) . '", label: "Purchase Bundle" },
+                        { url: "' . esc_js(wc_get_endpoint_url('lessons', 'manage-lessons', wc_get_page_permalink('myaccount'))) . '", label: "Manage Lessons" }
+                    ], true); // true = prevent parent click on all devices
                 }
                 
                 // Add Store Account submenu
@@ -426,6 +437,7 @@ class AKS_WooCommerce_Account_Customization {
      */
     public function filter_account_menu($items) {
         $new = [];
+        $user_id = get_current_user_id();
         
         // REMOVE Dashboard completely
         unset($items['dashboard']);
@@ -436,8 +448,10 @@ class AKS_WooCommerce_Account_Customization {
         // Students (always show)
         $new[$this->endpoints['students']] = __('Students', 'aks-integration');
         
-        // Lessons (no link, only sub-tabs - handled by CSS/JS)
-        $new[$this->endpoints['lessons']] = __('Lessons', 'aks-integration');
+        // Lessons (only show if user has at least one student)
+        if ($this->has_students($user_id)) {
+            $new[$this->endpoints['lessons']] = __('Lessons', 'aks-integration');
+        }
         
         // Rest of items
         $new[$this->endpoints['documents']]      = __('Waiver & Documents', 'aks-integration');
@@ -559,6 +573,12 @@ class AKS_WooCommerce_Account_Customization {
 
         // Registration Form 2 gating
         $this->maybe_redirect_if_registration_incomplete($user_id);
+        
+        // Check if user has any students - redirect to Students tab if not
+        if (!$this->has_students($user_id)) {
+            wp_safe_redirect(wc_get_endpoint_url($this->endpoints['students'], '', wc_get_page_permalink('myaccount')));
+            exit;
+        }
 
         $this->heading(
             __('Lessons', 'aks-integration'),
@@ -1204,6 +1224,33 @@ class AKS_WooCommerce_Account_Customization {
      */
     private function has_signed_waiver($user_id) {
         return get_user_meta($user_id, self::META_WAIVER_SIGNED, true) === 'yes';
+    }
+    
+    /**
+     * Check if user has at least one student registered
+     */
+    private function has_students($user_id) {
+        if (!class_exists('GFAPI')) {
+            return false;
+        }
+        
+        // Form 1 is the student registration form
+        $form_id = 1;
+        
+        // Search for entries where created_by matches user_id
+        $search_criteria = array(
+            'status' => 'active',
+            'field_filters' => array(
+                array(
+                    'key' => 'created_by',
+                    'value' => $user_id
+                )
+            )
+        );
+        
+        $entries = GFAPI::get_entries($form_id, $search_criteria);
+        
+        return is_array($entries) && count($entries) > 0;
     }
 
     /**
