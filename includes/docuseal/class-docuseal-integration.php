@@ -3,6 +3,8 @@
  * DocuSeal Integration Handler
  * Handles form submissions and creates DocuSeal documents
  * Now supports regeneration when student data changes
+ * 
+ * UPDATED: Uses dynamic URLs instead of hardcoded /test/ paths
  */
 
 class AKS_DocuSeal_Integration {
@@ -20,18 +22,18 @@ class AKS_DocuSeal_Integration {
     
     /**
      * Get redirect URL based on parent/guardian status
-     * Hardcoded for test environment - update manually when moving to production
+     * Uses dynamic WordPress functions - works regardless of installation path
      * 
      * @param bool $is_parent Whether user is parent/guardian
      * @return string Complete redirect URL
      */
     private function get_redirect_url($is_parent) {
         if ($is_parent) {
-            // Parent/guardian redirects to /account/
-            return 'https://allknoxswim.com/test/account/';
+            // Parent/guardian redirects to My Account page
+            return wc_get_page_permalink('myaccount');
         } else {
             // Non-parent redirects to homepage
-            return 'https://allknoxswim.com/test/';
+            return home_url('/');
         }
     }
     
@@ -303,7 +305,7 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
                 if (isset($response_data['id'])) {
                     $template_id = $response_data['id'];
                     
-                    // Get the redirect URL based on parent/guardian status
+                    // Get the redirect URL based on parent/guardian status (NOW DYNAMIC!)
                     $redirect_url = $this->get_redirect_url($is_parent);
                     
                     // Create a submission to send the document for signing

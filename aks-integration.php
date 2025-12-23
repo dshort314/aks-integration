@@ -155,6 +155,12 @@ class AKS_Integration {
                 require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-donated-lessons-handler.php';
                 AKS_Donated_Lessons_Handler::get_instance();
             }
+			
+			// Load Checkout Bump Products
+		   if (file_exists(AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-checkout-bump-products.php')) {
+			   require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-checkout-bump-products.php';
+			   AKS_Checkout_Bump_Products::get_instance();
+		   }
         }
     }
     
