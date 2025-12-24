@@ -151,7 +151,6 @@ class AKS_Donated_Lessons_Handler {
         
         // Check if already processed
         if ($order->get_meta('_donated_lessons_processed')) {
-            error_log('Donated Lessons: Order ' . $order_id . ' already processed, skipping');
             return;
         }
         
@@ -184,8 +183,6 @@ class AKS_Donated_Lessons_Handler {
             if ($donated_count > 0) {
                 $item_total = $quantity * $donated_count;
                 $total_donated += $item_total;
-                
-                error_log('Donated Lessons: Product ' . $product->get_name() . ' (qty: ' . $quantity . ') contributes ' . $item_total . ' lessons');
             }
         }
         
@@ -202,8 +199,6 @@ class AKS_Donated_Lessons_Handler {
             
             // Log to history
             $this->add_to_history('order', $total_donated, $order_id);
-            
-            error_log('Donated Lessons: Order ' . $order_id . ' added ' . $total_donated . ' lessons. New total: ' . $new_total);
         }
     }
     
@@ -254,8 +249,6 @@ class AKS_Donated_Lessons_Handler {
         
         update_option($this->option_name, $new_total);
         $this->add_to_history($operation, $amount, 'manual');
-        
-        error_log('Donated Lessons: Manual ' . $operation . ' of ' . $amount . ' lessons. New total: ' . $new_total);
         
         return true;
     }

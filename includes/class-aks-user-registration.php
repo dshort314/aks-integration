@@ -63,13 +63,6 @@ class AKS_User_Registration_Handler {
 		
 		// GravityView-specific delete action
 		add_action( 'gravityview/delete-entry/deleted', array( $this, 'trigger_docuseal_on_gv_delete' ), 10, 2 );
-		
-		// Debug: Log ALL entry deletions
-		add_action( 'gform_after_delete_entry', array( $this, 'debug_entry_delete' ), 5, 2 );
-		add_action( 'gravityview/delete-entry/deleted', array( $this, 'debug_gv_delete' ), 5, 2 );
-		
-		// Debug: Log ALL entry updates to verify hook is firing
-		add_action( 'gform_after_update_entry', array( $this, 'debug_entry_update' ), 5, 2 );
 
 		// Restrict Form 3 to logged-in users only.
 		add_filter( 'gform_pre_render_3', array( $this, 'restrict_form_to_logged_in_users' ) );
@@ -145,8 +138,6 @@ class AKS_User_Registration_Handler {
 			
 			// Save to billing_phone (used by WooCommerce and displayed in profile)
 			update_user_meta( $user_id, 'billing_phone', $formatted_phone );
-			
-			error_log( 'AKS User Registration: Saved phone number ' . $formatted_phone . ' to user ' . $user_id );
 		}
 	}
 
@@ -167,7 +158,6 @@ class AKS_User_Registration_Handler {
 
 		// Only proceed if user_id is valid
 		if ( ! $user_id ) {
-			error_log( 'AKS Auto-Login: No user_id provided' );
 			return;
 		}
 
@@ -177,8 +167,6 @@ class AKS_User_Registration_Handler {
 
 		// Trigger the wp_login action for compatibility with other plugins
 		do_action( 'wp_login', wp_get_current_user()->user_login, wp_get_current_user() );
-
-		error_log( 'AKS Auto-Login: User ' . $user_id . ' has been automatically logged in' );
 	}
 
 	/**
@@ -221,13 +209,11 @@ class AKS_User_Registration_Handler {
 		$entry_id = rgar( $entry, 'id' );
 
 		if ( empty( $user_id ) || empty( $entry_id ) ) {
-			error_log( 'AKS Entry Tracking: Could not store Form 2 entry ID - User ID: ' . $user_id . ', Entry ID: ' . $entry_id );
 			return;
 		}
 
 		// Store entry ID in user meta
 		update_user_meta( $user_id, 'aks_form_1_entry_id', $entry_id );
-		error_log( 'AKS Entry Tracking: Stored Form 2 (labeled Form 1) entry ID ' . $entry_id . ' for user ' . $user_id );
 	}
 
 	/**
@@ -242,20 +228,17 @@ class AKS_User_Registration_Handler {
 		$entry_id = rgar( $entry, 'id' );
 
 		if ( empty( $email ) || empty( $entry_id ) ) {
-			error_log( 'AKS Entry Tracking: Could not store Form 3 entry ID - Email: ' . $email . ', Entry ID: ' . $entry_id );
 			return;
 		}
 
 		// Get user by email
 		$user = get_user_by( 'email', $email );
 		if ( ! $user ) {
-			error_log( 'AKS Entry Tracking: User not found for email: ' . $email );
 			return;
 		}
 
 		// Store entry ID in user meta
 		update_user_meta( $user->ID, 'aks_form_2_entry_id', $entry_id );
-		error_log( 'AKS Entry Tracking: Stored Form 3 (labeled Form 2) entry ID ' . $entry_id . ' for user ' . $user->ID );
 	}
 
 	/**
@@ -269,14 +252,12 @@ class AKS_User_Registration_Handler {
 		$email = rgar( $entry, '29' );
 		
 		if ( empty( $email ) ) {
-			error_log( 'AKS Pabbly Webhook: No email found in entry' );
 			return;
 		}
 		
 		// Get user by email
 		$user = get_user_by( 'email', $email );
 		if ( ! $user ) {
-			error_log( 'AKS Pabbly Webhook: User not found for email: ' . $email );
 			return;
 		}
 		
@@ -402,7 +383,7 @@ class AKS_User_Registration_Handler {
 		$webhook_url = 'https://connect.pabbly.com/workflow/sendwebhookdata/IjU3NjYwNTY0MDYzMzA0M2M1MjZjNTUzNjUxMzIi_pc';
 		
 		// Send to webhook
-		$response = wp_remote_post( $webhook_url, array(
+		wp_remote_post( $webhook_url, array(
 			'method'      => 'POST',
 			'timeout'     => 45,
 			'headers'     => array(
@@ -411,14 +392,6 @@ class AKS_User_Registration_Handler {
 			'body'        => json_encode( $payload ),
 			'data_format' => 'body',
 		) );
-		
-		if ( is_wp_error( $response ) ) {
-			error_log( 'AKS Pabbly Webhook: Error sending to webhook - ' . $response->get_error_message() );
-		} else {
-			$response_code = wp_remote_retrieve_response_code( $response );
-			$response_body = wp_remote_retrieve_body( $response );
-			error_log( 'AKS Pabbly Webhook: Sent successfully - HTTP ' . $response_code . ' - ' . $response_body );
-		}
 	}
 
 	/**
@@ -432,7 +405,6 @@ class AKS_User_Registration_Handler {
 		// Get user data
 		$user = get_userdata( $user_id );
 		if ( ! $user ) {
-			error_log( 'AKS Pabbly Update Webhook: User not found for ID: ' . $user_id );
 			return;
 		}
 		
@@ -558,7 +530,7 @@ class AKS_User_Registration_Handler {
 		$webhook_url = 'https://connect.pabbly.com/workflow/sendwebhookdata/IjU3NjYwNTY0MDYzMzA0M2M1MjZjNTUzNzUxM2Ei_pc';
 		
 		// Send to webhook
-		$response = wp_remote_post( $webhook_url, array(
+		wp_remote_post( $webhook_url, array(
 			'method'      => 'POST',
 			'timeout'     => 45,
 			'headers'     => array(
@@ -567,14 +539,6 @@ class AKS_User_Registration_Handler {
 			'body'        => json_encode( $payload ),
 			'data_format' => 'body',
 		) );
-		
-		if ( is_wp_error( $response ) ) {
-			error_log( 'AKS Pabbly Update Webhook: Error sending to webhook - ' . $response->get_error_message() );
-		} else {
-			$response_code = wp_remote_retrieve_response_code( $response );
-			$response_body = wp_remote_retrieve_body( $response );
-			error_log( 'AKS Pabbly Update Webhook: Sent successfully - HTTP ' . $response_code . ' - ' . $response_body );
-		}
 	}
 
 	/**
@@ -594,20 +558,17 @@ class AKS_User_Registration_Handler {
 		// Get current user
 		$user_id = get_current_user_id();
 		if ( ! $user_id ) {
-			error_log( 'AKS Student Linking: User not logged in' );
 			return $entry;
 		}
 
 		// Get parent Form 3 entry ID from user meta
 		$parent_entry_id = get_user_meta( $user_id, 'aks_form_2_entry_id', true );
 		if ( empty( $parent_entry_id ) ) {
-			error_log( 'AKS Student Linking: No parent entry ID found for user ' . $user_id );
 			return $entry;
 		}
 
 		// Check if GPNF class exists
 		if ( ! class_exists( 'GPNF_Entry' ) ) {
-			error_log( 'AKS Student Linking: GPNF_Entry class not found' );
 			return $entry;
 		}
 
@@ -621,8 +582,6 @@ class AKS_User_Registration_Handler {
 		// Update the entry
 		GFAPI::update_entry( $entry );
 
-		error_log( 'AKS Student Linking: Linked Form 1 entry ' . $entry['id'] . ' to Form 3 entry ' . $parent_entry_id );
-
 		return $entry;
 	}
 
@@ -633,36 +592,23 @@ class AKS_User_Registration_Handler {
 	 * @param array $form  The form object
 	 */
 	public function trigger_docuseal_on_student_add( $entry, $form ) {
-		error_log('AKS DocuSeal Trigger: Form 1 submission detected, entry ID: ' . rgar($entry, 'id'));
-		
 		// Get current user
 		$user_id = get_current_user_id();
 		if ( ! $user_id ) {
-			error_log( 'AKS DocuSeal Trigger: User not logged in' );
 			return;
 		}
-		
-		error_log('AKS DocuSeal Trigger: User ID: ' . $user_id);
 
 		// Get parent Form 3 entry ID
 		$parent_entry_id = get_user_meta( $user_id, 'aks_form_2_entry_id', true );
 		if ( empty( $parent_entry_id ) ) {
-			error_log( 'AKS DocuSeal Trigger: No parent entry ID found for user ' . $user_id );
 			return;
 		}
-		
-		error_log('AKS DocuSeal Trigger: Parent Form 3 entry ID: ' . $parent_entry_id);
 
 		// Get the parent entry
 		$parent_entry = GFAPI::get_entry( $parent_entry_id );
 		if ( is_wp_error( $parent_entry ) ) {
-			error_log( 'AKS DocuSeal Trigger: Could not retrieve parent entry ' . $parent_entry_id );
 			return;
 		}
-		
-		error_log('AKS DocuSeal Trigger: Retrieved parent entry, field 21 value: "' . rgar($parent_entry, '21') . '"');
-
-		error_log( 'AKS DocuSeal Trigger: Student added, regenerating DocuSeal for user ' . $user_id );
 
 		// Trigger DocuSeal regeneration
 		$this->regenerate_docuseal( $parent_entry, $user_id );
@@ -681,59 +627,79 @@ class AKS_User_Registration_Handler {
 			
 			$current_student_count = intval( $wpdb->get_var( $query ) );
 			gform_update_meta( $parent_entry_id, 'aks_student_count', $current_student_count );
-			error_log('AKS DocuSeal Trigger: Updated student count to ' . $current_student_count . ' for parent entry ' . $parent_entry_id);
 		}
 	}
 
 	/**
-	 * Debug: Log GravityView deletions
+	 * Trigger DocuSeal regeneration when GravityView deletes an entry
 	 *
 	 * @param int   $entry_id The entry ID being deleted
 	 * @param array $entry    The entry being deleted
 	 */
-	public function debug_gv_delete( $entry_id, $entry ) {
-		error_log('=== AKS DEBUG: gravityview/delete-entry/deleted fired ===');
-		error_log('Entry ID: ' . $entry_id);
-		error_log('Entry data: ' . print_r($entry, true));
-		error_log('=== END DEBUG ===');
-	}
-
-	/**
-	 * Debug: Log all entry deletions
-	 *
-	 * @param int   $entry_id The entry ID being deleted
-	 * @param array $entry    The entry being deleted
-	 */
-	public function debug_entry_delete( $entry_id, $entry ) {
-		error_log('=== AKS DEBUG: gform_after_delete_entry fired ===');
-		error_log('Entry ID: ' . $entry_id);
-		error_log('Form ID: ' . rgar($entry, 'form_id'));
-		error_log('=== END DEBUG ===');
-	}
-
-	/**
-	 * Debug: Log all entry updates to verify hook is firing
-	 *
-	 * @param array $entry    The updated entry
-	 * @param int   $entry_id The entry ID (yes, redundant but that's how GF does it)
-	 */
-	public function debug_entry_update( $entry, $entry_id ) {
-		// Fetch fresh entry to get all data
-		$fresh_entry = GFAPI::get_entry( $entry_id );
+	public function trigger_docuseal_on_gv_delete( $entry_id, $entry ) {
+		// Get form ID
+		$form_id = is_array($entry) ? rgar($entry, 'form_id') : null;
 		
-		error_log('=== AKS DEBUG: gform_after_update_entry fired ===');
-		error_log('Entry ID: ' . $entry_id);
-		error_log('Fresh entry form_id: ' . rgar($fresh_entry, 'form_id'));
-		
-		// If Form 1, log the name fields
-		if ( rgar($fresh_entry, 'form_id') == 1 ) {
-			error_log('Form 1 - First Name (1.3): "' . rgar($fresh_entry, '1.3') . '"');
-			error_log('Form 1 - Last Name (1.6): "' . rgar($fresh_entry, '1.6') . '"');
-			error_log('Form 1 - DOB (2): "' . rgar($fresh_entry, '2') . '"');
+		// If we don't have form_id in entry, fetch it
+		if ( ! $form_id ) {
+			$full_entry = GFAPI::get_entry( $entry_id );
+			if ( ! is_wp_error( $full_entry ) ) {
+				$form_id = rgar($full_entry, 'form_id');
+			}
 		}
 		
-		error_log('Fresh entry field 21: "' . rgar($fresh_entry, '21') . '"');
-		error_log('=== END DEBUG ===');
+		// Only watch Form 1 (student) deletions
+		if ( intval( $form_id ) !== 1 ) {
+			return;
+		}
+
+		// Check if GPNF class exists
+		if ( ! class_exists( 'GPNF_Entry' ) ) {
+			return;
+		}
+
+		// Try to get parent entry ID from the entry array first (GPNF stores it there)
+		$parent_entry_id = rgar( $entry, GPNF_Entry::ENTRY_PARENT_KEY );
+		
+		// If not in entry array, try meta (though it may already be deleted)
+		if ( empty( $parent_entry_id ) ) {
+			$parent_entry_id = gform_get_meta( $entry_id, GPNF_Entry::ENTRY_PARENT_KEY );
+		}
+		
+		if ( empty( $parent_entry_id ) ) {
+			return;
+		}
+
+		// Get the parent Form 3 entry
+		$parent_entry = GFAPI::get_entry( $parent_entry_id );
+		if ( is_wp_error( $parent_entry ) ) {
+			return;
+		}
+
+		// Get user by email from parent entry
+		$email = rgar( $parent_entry, '29' );
+		$user = get_user_by( 'email', $email );
+
+		if ( ! $user ) {
+			return;
+		}
+
+		// Trigger DocuSeal regeneration
+		$this->regenerate_docuseal( $parent_entry, $user->ID );
+		
+		// Update the stored student count
+		global $wpdb;
+		$entry_meta_table = GFFormsModel::get_entry_meta_table_name();
+		
+		$query = $wpdb->prepare(
+			"SELECT COUNT(*) FROM {$entry_meta_table} 
+			WHERE meta_key = %s AND meta_value = %s",
+			GPNF_Entry::ENTRY_PARENT_KEY,
+			$parent_entry_id
+		);
+		
+		$current_student_count = intval( $wpdb->get_var( $query ) );
+		gform_update_meta( $parent_entry_id, 'aks_student_count', $current_student_count );
 	}
 
 	/**
@@ -746,16 +712,13 @@ class AKS_User_Registration_Handler {
 		// Fetch fresh entry to get form_id
 		$fresh_entry = GFAPI::get_entry( $entry_id );
 		if ( is_wp_error( $fresh_entry ) ) {
-			error_log('AKS DocuSeal Trigger: Could not fetch entry ' . $entry_id);
 			return;
 		}
 		
 		$form_id = rgar($fresh_entry, 'form_id');
-		error_log('AKS DocuSeal Trigger: gform_after_update_entry fired for form ' . $form_id);
 		
 		// Only watch Form 3
 		if ( intval( $form_id ) !== 3 ) {
-			error_log('AKS DocuSeal Trigger: Not Form 3 (form ' . $form_id . '), skipping');
 			return;
 		}
 
@@ -764,7 +727,6 @@ class AKS_User_Registration_Handler {
 		$entry_meta_table = GFFormsModel::get_entry_meta_table_name();
 		
 		if ( ! class_exists( 'GPNF_Entry' ) ) {
-			error_log('AKS DocuSeal Trigger: GPNF_Entry class not found');
 			return;
 		}
 		
@@ -780,25 +742,18 @@ class AKS_User_Registration_Handler {
 		// Get previous student count from meta
 		$previous_student_count = intval( gform_get_meta( $entry_id, 'aks_student_count' ) );
 		
-		error_log('AKS DocuSeal Trigger: Form 3 student count - Previous: ' . $previous_student_count . ', Current: ' . $current_student_count);
-		
 		// Update stored count
 		gform_update_meta( $entry_id, 'aks_student_count', $current_student_count );
 		
 		// If count changed, trigger regeneration
 		if ( $previous_student_count !== $current_student_count ) {
-			error_log('AKS DocuSeal Trigger: Student count changed (added or deleted)');
-			
 			// Get user by email from field 29
 			$email = rgar( $fresh_entry, '29' );
 			$user = get_user_by( 'email', $email );
 
 			if ( ! $user ) {
-				error_log( 'AKS DocuSeal Trigger: User not found for email: ' . $email );
 				return;
 			}
-
-			error_log('AKS DocuSeal Trigger: Found user ' . $user->ID . ', calling regenerate_docuseal');
 
 			// Trigger DocuSeal regeneration
 			$this->regenerate_docuseal( $fresh_entry, $user->ID );
@@ -826,11 +781,8 @@ class AKS_User_Registration_Handler {
 			return;
 		}
 
-		error_log('AKS DocuSeal Trigger: Form 1 (student) updated, entry ID: ' . $entry_id);
-
 		// Check if GPNF class exists and get parent entry info
 		if ( ! class_exists( 'GPNF_Entry' ) ) {
-			error_log( 'AKS DocuSeal Trigger: GPNF_Entry class not found' );
 			return;
 		}
 
@@ -838,16 +790,12 @@ class AKS_User_Registration_Handler {
 		$parent_entry_id = gform_get_meta( $entry_id, GPNF_Entry::ENTRY_PARENT_KEY );
 		
 		if ( empty( $parent_entry_id ) ) {
-			error_log('AKS DocuSeal Trigger: No parent entry found for student entry ' . $entry_id);
 			return;
 		}
-
-		error_log('AKS DocuSeal Trigger: Found parent entry ID: ' . $parent_entry_id);
 
 		// Get the parent Form 3 entry
 		$parent_entry = GFAPI::get_entry( $parent_entry_id );
 		if ( is_wp_error( $parent_entry ) ) {
-			error_log( 'AKS DocuSeal Trigger: Could not retrieve parent entry ' . $parent_entry_id );
 			return;
 		}
 
@@ -856,11 +804,8 @@ class AKS_User_Registration_Handler {
 		$user = get_user_by( 'email', $email );
 
 		if ( ! $user ) {
-			error_log( 'AKS DocuSeal Trigger: User not found for email: ' . $email );
 			return;
 		}
-
-		error_log('AKS DocuSeal Trigger: Student name/DOB edited, regenerating DocuSeal for user ' . $user->ID);
 
 		// Trigger DocuSeal regeneration
 		$this->regenerate_docuseal( $parent_entry, $user->ID );
@@ -879,100 +824,7 @@ class AKS_User_Registration_Handler {
 			
 			$current_student_count = intval( $wpdb->get_var( $query ) );
 			gform_update_meta( $parent_entry_id, 'aks_student_count', $current_student_count );
-			error_log('AKS DocuSeal Trigger: Updated student count to ' . $current_student_count . ' for parent entry ' . $parent_entry_id);
 		}
-	}
-
-	/**
-	 * Trigger DocuSeal regeneration when GravityView deletes an entry
-	 *
-	 * @param int   $entry_id The entry ID being deleted
-	 * @param array $entry    The entry being deleted
-	 */
-	public function trigger_docuseal_on_gv_delete( $entry_id, $entry ) {
-		error_log('AKS DocuSeal Trigger: GravityView deleted entry ' . $entry_id);
-		
-		// Get form ID
-		$form_id = is_array($entry) ? rgar($entry, 'form_id') : null;
-		
-		// If we don't have form_id in entry, fetch it
-		if ( ! $form_id ) {
-			$full_entry = GFAPI::get_entry( $entry_id );
-			if ( ! is_wp_error( $full_entry ) ) {
-				$form_id = rgar($full_entry, 'form_id');
-			}
-		}
-		
-		error_log('AKS DocuSeal Trigger: Entry form_id: ' . $form_id);
-		
-		// Only watch Form 1 (student) deletions
-		if ( intval( $form_id ) !== 1 ) {
-			error_log('AKS DocuSeal Trigger: Not Form 1, skipping');
-			return;
-		}
-
-		error_log('AKS DocuSeal Trigger: Form 1 (student) deleted via GravityView, entry ID: ' . $entry_id);
-
-		// Check if GPNF class exists
-		if ( ! class_exists( 'GPNF_Entry' ) ) {
-			error_log( 'AKS DocuSeal Trigger: GPNF_Entry class not found' );
-			return;
-		}
-
-		// Try to get parent entry ID from the entry array first (GPNF stores it there)
-		$parent_entry_id = rgar( $entry, GPNF_Entry::ENTRY_PARENT_KEY );
-		
-		// If not in entry array, try meta (though it may already be deleted)
-		if ( empty( $parent_entry_id ) ) {
-			$parent_entry_id = gform_get_meta( $entry_id, GPNF_Entry::ENTRY_PARENT_KEY );
-		}
-		
-		error_log('AKS DocuSeal Trigger: Parent entry ID from entry: ' . rgar( $entry, GPNF_Entry::ENTRY_PARENT_KEY ));
-		error_log('AKS DocuSeal Trigger: Parent entry ID from meta: ' . gform_get_meta( $entry_id, GPNF_Entry::ENTRY_PARENT_KEY ));
-		error_log('AKS DocuSeal Trigger: Final parent entry ID: ' . $parent_entry_id);
-		
-		if ( empty( $parent_entry_id ) ) {
-			error_log('AKS DocuSeal Trigger: No parent entry found for deleted student entry ' . $entry_id);
-			return;
-		}
-
-		error_log('AKS DocuSeal Trigger: Found parent entry ID: ' . $parent_entry_id);
-
-		// Get the parent Form 3 entry
-		$parent_entry = GFAPI::get_entry( $parent_entry_id );
-		if ( is_wp_error( $parent_entry ) ) {
-			error_log( 'AKS DocuSeal Trigger: Could not retrieve parent entry ' . $parent_entry_id );
-			return;
-		}
-
-		// Get user by email from parent entry
-		$email = rgar( $parent_entry, '29' );
-		$user = get_user_by( 'email', $email );
-
-		if ( ! $user ) {
-			error_log( 'AKS DocuSeal Trigger: User not found for email: ' . $email );
-			return;
-		}
-
-		error_log('AKS DocuSeal Trigger: Student deleted, regenerating DocuSeal for user ' . $user->ID);
-
-		// Trigger DocuSeal regeneration
-		$this->regenerate_docuseal( $parent_entry, $user->ID );
-		
-		// Update the stored student count
-		global $wpdb;
-		$entry_meta_table = GFFormsModel::get_entry_meta_table_name();
-		
-		$query = $wpdb->prepare(
-			"SELECT COUNT(*) FROM {$entry_meta_table} 
-			WHERE meta_key = %s AND meta_value = %s",
-			GPNF_Entry::ENTRY_PARENT_KEY,
-			$parent_entry_id
-		);
-		
-		$current_student_count = intval( $wpdb->get_var( $query ) );
-		gform_update_meta( $parent_entry_id, 'aks_student_count', $current_student_count );
-		error_log('AKS DocuSeal Trigger: Updated student count to ' . $current_student_count . ' for parent entry ' . $parent_entry_id);
 	}
 
 	/**
@@ -989,11 +841,8 @@ class AKS_User_Registration_Handler {
 			return;
 		}
 
-		error_log('AKS DocuSeal Trigger: Form 1 (student) deleted, entry ID: ' . $entry_id);
-
 		// Check if GPNF class exists and get parent entry info
 		if ( ! class_exists( 'GPNF_Entry' ) ) {
-			error_log( 'AKS DocuSeal Trigger: GPNF_Entry class not found' );
 			return;
 		}
 
@@ -1001,16 +850,12 @@ class AKS_User_Registration_Handler {
 		$parent_entry_id = gform_get_meta( $entry_id, GPNF_Entry::ENTRY_PARENT_KEY );
 		
 		if ( empty( $parent_entry_id ) ) {
-			error_log('AKS DocuSeal Trigger: No parent entry found for deleted student entry ' . $entry_id);
 			return;
 		}
-
-		error_log('AKS DocuSeal Trigger: Found parent entry ID: ' . $parent_entry_id);
 
 		// Get the parent Form 3 entry
 		$parent_entry = GFAPI::get_entry( $parent_entry_id );
 		if ( is_wp_error( $parent_entry ) ) {
-			error_log( 'AKS DocuSeal Trigger: Could not retrieve parent entry ' . $parent_entry_id );
 			return;
 		}
 
@@ -1019,11 +864,8 @@ class AKS_User_Registration_Handler {
 		$user = get_user_by( 'email', $email );
 
 		if ( ! $user ) {
-			error_log( 'AKS DocuSeal Trigger: User not found for email: ' . $email );
 			return;
 		}
-
-		error_log('AKS DocuSeal Trigger: Student deleted, regenerating DocuSeal for user ' . $user->ID);
 
 		// Trigger DocuSeal regeneration
 		$this->regenerate_docuseal( $parent_entry, $user->ID );
@@ -1047,7 +889,6 @@ class AKS_User_Registration_Handler {
 		$fresh_entry = GFAPI::get_entry( $entry_id );
 		
 		if ( is_wp_error( $fresh_entry ) ) {
-			error_log('AKS DocuSeal Regeneration: Could not retrieve fresh entry ' . $entry_id);
 			return;
 		}
 		
@@ -1065,20 +906,14 @@ class AKS_User_Registration_Handler {
 			
 			$student_entry_ids = $wpdb->get_col( $query );
 			
-			error_log('AKS DocuSeal Regeneration: Found ' . count($student_entry_ids) . ' student entries via DB query: ' . implode(', ', $student_entry_ids));
-			
 			// Update field 21 with all student entry IDs
 			if ( ! empty( $student_entry_ids ) ) {
 				$fresh_entry['21'] = implode( ',', $student_entry_ids );
-				error_log('AKS DocuSeal Regeneration: Updated fresh entry field 21 to: "' . $fresh_entry['21'] . '"');
 			}
-		} else {
-			error_log('AKS DocuSeal Regeneration: GPNF_Entry class not found, using field 21 as-is: "' . rgar($fresh_entry, '21') . '"');
 		}
 		
 		// Reset waiver status
 		update_user_meta( $user_id, 'sr_waiver_signed', 'no' );
-		error_log( 'AKS DocuSeal Regeneration: Reset waiver status for user ' . $user_id );
 
 		// Get the DocuSeal integration class
 		if ( ! class_exists( 'AKS_DocuSeal_Integration' ) ) {
@@ -1093,8 +928,6 @@ class AKS_User_Registration_Handler {
 		
 		// Call the send_to_docuseal method with fresh entry and regeneration flag
 		$docuseal->send_to_docuseal( $fresh_entry, $form, true );
-
-		error_log( 'AKS DocuSeal Regeneration: Triggered DocuSeal generation for user ' . $user_id );
 		
 		// Send updated data to Pabbly webhook
 		$this->send_to_pabbly_update_webhook( $fresh_entry, $form, $user_id );

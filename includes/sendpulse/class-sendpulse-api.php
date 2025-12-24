@@ -46,7 +46,6 @@ class AKS_SendPulse_API {
         ));
         
         if (is_wp_error($response)) {
-            error_log('SendPulse API Error: ' . $response->get_error_message());
             return false;
         }
         
@@ -54,14 +53,12 @@ class AKS_SendPulse_API {
         $response_body = wp_remote_retrieve_body($response);
         
         if ($response_code !== 200) {
-            error_log('SendPulse API Error: HTTP ' . $response_code . ' - ' . $response_body);
             return false;
         }
         
         $data = json_decode($response_body, true);
         
         if (!isset($data['access_token'])) {
-            error_log('SendPulse API Error: No access token in response');
             return false;
         }
         
@@ -117,7 +114,6 @@ class AKS_SendPulse_API {
                 
                 if (isset($data['data']['total']) && $data['data']['total'] > 0) {
                     $contact_id = $data['data']['list'][0]['id'];
-                    error_log('SendPulse: Contact found with both email and phone. ID: ' . $contact_id);
                     return array('exists' => true, 'contact_id' => $contact_id, 'has_email' => true, 'has_phone' => true);
                 }
             }
@@ -147,7 +143,6 @@ class AKS_SendPulse_API {
                 
                 if (isset($data['data']['total']) && $data['data']['total'] > 0) {
                     $contact_id = $data['data']['list'][0]['id'];
-                    error_log('SendPulse: Contact found with email only. ID: ' . $contact_id);
                     return array('exists' => true, 'contact_id' => $contact_id, 'has_email' => true, 'has_phone' => false);
                 }
             }
@@ -182,7 +177,6 @@ class AKS_SendPulse_API {
                 
                 if (isset($data['data']['total']) && $data['data']['total'] > 0) {
                     $contact_id = $data['data']['list'][0]['id'];
-                    error_log('SendPulse: Contact found with phone only. ID: ' . $contact_id);
                     return array('exists' => true, 'contact_id' => $contact_id, 'has_email' => false, 'has_phone' => true);
                 }
             }
@@ -215,7 +209,6 @@ class AKS_SendPulse_API {
         ));
         
         if (is_wp_error($response)) {
-            error_log('SendPulse Get Contact Error: ' . $response->get_error_message());
             return false;
         }
         
@@ -271,18 +264,15 @@ class AKS_SendPulse_API {
         curl_close($curl);
         
         if ($curl_error) {
-            error_log('SendPulse Update Name cURL Error: ' . $curl_error);
             return false;
         }
         
         if ($response_code !== 200) {
-            error_log('SendPulse Update Name Error: HTTP ' . $response_code . ' - ' . $response_body);
             return false;
         }
         
         $data = json_decode($response_body, true);
         
-        error_log('SendPulse: Updated contact ' . $contact_id . ' name to ' . $first_name . ' ' . $last_name);
         return $data;
     }
     
@@ -322,7 +312,6 @@ class AKS_SendPulse_API {
         ));
         
         if (is_wp_error($response)) {
-            error_log('SendPulse Add Phone Error: ' . $response->get_error_message());
             return false;
         }
         
@@ -330,13 +319,11 @@ class AKS_SendPulse_API {
         $response_body = wp_remote_retrieve_body($response);
         
         if ($response_code !== 200 && $response_code !== 201) {
-            error_log('SendPulse Add Phone Error: HTTP ' . $response_code . ' - ' . $response_body);
             return false;
         }
         
         $data = json_decode($response_body, true);
         
-        error_log('SendPulse: Phone added to contact ' . $contact_id . ' - Response: ' . $response_body);
         return $data;
     }
     
@@ -375,7 +362,6 @@ class AKS_SendPulse_API {
         ));
         
         if (is_wp_error($response)) {
-            error_log('SendPulse Add Email Error: ' . $response->get_error_message());
             return false;
         }
         
@@ -383,13 +369,11 @@ class AKS_SendPulse_API {
         $response_body = wp_remote_retrieve_body($response);
         
         if ($response_code !== 200 && $response_code !== 201) {
-            error_log('SendPulse Add Email Error: HTTP ' . $response_code . ' - ' . $response_body);
             return false;
         }
         
         $data = json_decode($response_body, true);
         
-        error_log('SendPulse: Email added to contact ' . $contact_id . ' - Response: ' . $response_body);
         return $data;
     }
     
@@ -444,7 +428,6 @@ class AKS_SendPulse_API {
         ));
         
         if (is_wp_error($response)) {
-            error_log('SendPulse Create Contact Error: ' . $response->get_error_message());
             return false;
         }
         
@@ -453,13 +436,7 @@ class AKS_SendPulse_API {
         $data = json_decode($response_body, true);
         
         if ($response_code !== 200 && $response_code !== 201) {
-            error_log('SendPulse Create Contact Error: HTTP ' . $response_code . ' - ' . $response_body);
             return false;
-        }
-        
-        // Log successful creation
-        if (isset($data['data']['id'])) {
-            error_log('SendPulse Contact Created: ID ' . $data['data']['id']);
         }
         
         return $data;
@@ -495,7 +472,6 @@ class AKS_SendPulse_API {
         ));
         
         if (is_wp_error($response)) {
-            error_log('SendPulse Add to List Error: ' . $response->get_error_message());
             return false;
         }
         
@@ -503,13 +479,11 @@ class AKS_SendPulse_API {
         $response_body = wp_remote_retrieve_body($response);
         
         if ($response_code !== 200 && $response_code !== 201) {
-            error_log('SendPulse Add to List Error: HTTP ' . $response_code . ' - ' . $response_body);
             return false;
         }
         
         $data = json_decode($response_body, true);
         
-        error_log('SendPulse: Added email ' . $email . ' to addressbook ' . $list_id);
         return $data;
     }
     
@@ -538,7 +512,6 @@ class AKS_SendPulse_API {
         ));
         
         if (is_wp_error($response)) {
-            error_log('SendPulse Add Tag Error: ' . $response->get_error_message());
             return false;
         }
         
@@ -546,13 +519,11 @@ class AKS_SendPulse_API {
         $response_body = wp_remote_retrieve_body($response);
         
         if ($response_code !== 200 && $response_code !== 201) {
-            error_log('SendPulse Add Tag Error: HTTP ' . $response_code . ' - ' . $response_body);
             return false;
         }
         
         $data = json_decode($response_body, true);
         
-        error_log('SendPulse: Added tag ' . $tag_id . ' to contact ' . $contact_id);
         return $data;
     }
     
@@ -586,7 +557,6 @@ class AKS_SendPulse_API {
         ));
         
         if (is_wp_error($response)) {
-            error_log('SendPulse Add Note Error: ' . $response->get_error_message());
             return false;
         }
         
@@ -594,13 +564,11 @@ class AKS_SendPulse_API {
         $response_body = wp_remote_retrieve_body($response);
         
         if ($response_code !== 200 && $response_code !== 201) {
-            error_log('SendPulse Add Note Error: HTTP ' . $response_code . ' - ' . $response_body);
             return false;
         }
         
         $data = json_decode($response_body, true);
         
-        error_log('SendPulse: Added note to contact ' . $contact_id);
         return $data;
     }
     

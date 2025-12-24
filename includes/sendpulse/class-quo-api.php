@@ -37,8 +37,7 @@ class AKS_Quo_API {
             return '+1' . $digits;
         }
         
-        // If something else, log it and return with + prefix
-        error_log('Quo: Unexpected phone format: ' . $phone . ' (' . strlen($digits) . ' digits)');
+        // If something else, return with + prefix
         return '+' . $digits;
     }
     
@@ -64,7 +63,6 @@ class AKS_Quo_API {
             ));
             
             if (is_wp_error($response)) {
-                error_log('Quo API Error: ' . $response->get_error_message());
                 break;
             }
             
@@ -94,8 +92,6 @@ class AKS_Quo_API {
         // Format phone to E.164 before searching
         $phone_e164 = $this->format_phone_e164($phone);
         
-        error_log('Quo: Searching for contact with E.164 phone: ' . $phone_e164);
-        
         $contacts = $this->get_all_contacts();
         
         foreach ($contacts as $contact) {
@@ -105,14 +101,12 @@ class AKS_Quo_API {
                     $contact_phone_e164 = $this->format_phone_e164($phone_number['value']);
                     
                     if ($contact_phone_e164 === $phone_e164) {
-                        error_log('Quo: Found contact with phone ' . $phone_e164 . ', ID: ' . $contact['id']);
                         return $contact;
                     }
                 }
             }
         }
         
-        error_log('Quo: No contact found with phone ' . $phone_e164);
         return null;
     }
     
@@ -130,8 +124,6 @@ class AKS_Quo_API {
         
         // Format phone to E.164
         $phone_e164 = $this->format_phone_e164($phone);
-        
-        error_log('Quo: Updating contact ' . $contact_id . ' with E.164 phone: ' . $phone_e164);
         
         $body = array(
             'defaultFields' => array(
@@ -157,14 +149,12 @@ class AKS_Quo_API {
         ));
         
         if (is_wp_error($response)) {
-            error_log('Quo Update Error: ' . $response->get_error_message());
             return false;
         }
         
         $response_body = wp_remote_retrieve_body($response);
         $data = json_decode($response_body, true);
         
-        error_log('Quo: Updated contact ' . $contact_id . ' with names and E.164 phone');
         return $data;
     }
     
@@ -197,8 +187,6 @@ class AKS_Quo_API {
             // Format phone to E.164
             $phone_e164 = $this->format_phone_e164($contact_data['phone']);
             
-            error_log('Quo: Creating contact with E.164 phone: ' . $phone_e164);
-            
             $body['defaultFields']['phoneNumbers'] = array(
                 array(
                     'name' => 'mobile',
@@ -217,7 +205,6 @@ class AKS_Quo_API {
         ));
         
         if (is_wp_error($response)) {
-            error_log('Quo Create Contact Error: ' . $response->get_error_message());
             return false;
         }
         
@@ -226,11 +213,9 @@ class AKS_Quo_API {
         $data = json_decode($response_body, true);
         
         if ($response_code !== 200 && $response_code !== 201) {
-            error_log('Quo Create Contact Error: HTTP ' . $response_code . ' - ' . $response_body);
             return false;
         }
         
-        error_log('Quo: Contact created successfully - ID: ' . $data['data']['id'] . ' with E.164 phone');
         return $data;
     }
 }

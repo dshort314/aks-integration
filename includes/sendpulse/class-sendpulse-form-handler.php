@@ -38,15 +38,8 @@ class AKS_SendPulse_Form_Handler {
         $email = $this->get_field_value('4');         // Email
         $phone = $this->get_field_value('5');         // Phone
         
-        // Log what we're getting
-        error_log('Form Handler - First Name: ' . $first_name);
-        error_log('Form Handler - Last Name: ' . $last_name);
-        error_log('Form Handler - Email: ' . $email);
-        error_log('Form Handler - Phone: ' . $phone);
-        
         // Validate required fields
         if (empty($first_name) || empty($last_name)) {
-            error_log('SendPulse: First name and last name are required');
             return;
         }
         
@@ -82,7 +75,6 @@ class AKS_SendPulse_Form_Handler {
         $user_id = rgar($entry, '32');
         
         if (empty($user_id)) {
-            error_log('SendPulse: No user ID found in entry field 32');
             return;
         }
         
@@ -94,22 +86,18 @@ class AKS_SendPulse_Form_Handler {
         
         if (!empty($sendpulse_contact_id)) {
             update_user_meta($user_id, 'sendpulse_contact_id', $sendpulse_contact_id);
-            error_log('SendPulse: Updated user ' . $user_id . ' with contact_id: ' . $sendpulse_contact_id);
         }
         
         if (!empty($sendpulse_user_id)) {
             update_user_meta($user_id, 'sendpulse_user_id', $sendpulse_user_id);
-            error_log('SendPulse: Updated user ' . $user_id . ' with user_id: ' . $sendpulse_user_id);
         }
         
         if (!empty($sendpulse_phone_id)) {
             update_user_meta($user_id, 'sendpulse_phone_id', $sendpulse_phone_id);
-            error_log('SendPulse: Updated user ' . $user_id . ' with phone_id: ' . $sendpulse_phone_id);
         }
         
         if (!empty($sendpulse_email_id)) {
             update_user_meta($user_id, 'sendpulse_email_id', $sendpulse_email_id);
-            error_log('SendPulse: Updated user ' . $user_id . ' with email_id: ' . $sendpulse_email_id);
         }
         
         // Update Quo IDs
@@ -118,12 +106,10 @@ class AKS_SendPulse_Form_Handler {
         
         if (!empty($quo_contact_id)) {
             update_user_meta($user_id, 'quo_contact_id', $quo_contact_id);
-            error_log('Quo: Updated user ' . $user_id . ' with contact_id: ' . $quo_contact_id);
         }
         
         if (!empty($quo_phone_id)) {
             update_user_meta($user_id, 'quo_phone_id', $quo_phone_id);
-            error_log('Quo: Updated user ' . $user_id . ' with phone_id: ' . $quo_phone_id);
         }
     }
     
@@ -133,22 +119,16 @@ class AKS_SendPulse_Form_Handler {
      * @param array $contact_data Contact information
      */
     private function create_quo_contact($contact_data) {
-        error_log('Quo: Entering create_quo_contact - Data: ' . json_encode($contact_data));
-        
         // Check if Quo API key is configured
         if (empty($this->settings['quo_api_key'])) {
-            error_log('Quo: API key not configured in settings');
             return;
         }
         
         $phone = isset($contact_data['phone']) ? $contact_data['phone'] : '';
         
         if (empty($phone)) {
-            error_log('Quo: Phone number required but not provided');
             return;
         }
-        
-        error_log('Quo: Phone found: ' . $phone);
         
         // Initialize Quo API client
         if (!class_exists('AKS_Quo_API')) {
@@ -156,66 +136,48 @@ class AKS_SendPulse_Form_Handler {
         }
         
         $api = new AKS_Quo_API($this->settings['quo_api_key']);
-        error_log('Quo: API client initialized');
         
         // Search for existing contact by phone
-        error_log('Quo: Searching for contact by phone...');
         $existing_contact = $api->search_contact_by_phone($phone);
         
         if ($existing_contact) {
-            error_log('Quo: Found existing contact: ' . json_encode($existing_contact));
-            
             // Check if first name and last name are empty
             $first_name = isset($existing_contact['defaultFields']['firstName']) ? $existing_contact['defaultFields']['firstName'] : '';
             $last_name = isset($existing_contact['defaultFields']['lastName']) ? $existing_contact['defaultFields']['lastName'] : '';
             
             if (empty($first_name) && empty($last_name)) {
                 // Update with names
-                error_log('Quo: Updating contact ' . $existing_contact['id'] . ' with names');
-                $update_result = $api->update_contact_names(
+                $api->update_contact_names(
                     $existing_contact['id'],
                     $contact_data['firstName'],
                     $contact_data['lastName'],
                     $phone
                 );
-                error_log('Quo: Update result: ' . json_encode($update_result));
-            } else {
-                error_log('Quo: Contact already has names (First: ' . $first_name . ', Last: ' . $last_name . '), skipping update');
             }
             
             // Store Quo Contact ID in field 30
             $_POST['input_30'] = $existing_contact['id'];
-            error_log('Quo: Set input_30 to: ' . $existing_contact['id']);
             
             // Store Quo Phone ID in field 31 if available
             if (isset($existing_contact['defaultFields']['phoneNumbers'][0]['id'])) {
                 $_POST['input_31'] = $existing_contact['defaultFields']['phoneNumbers'][0]['id'];
-                error_log('Quo: Set input_31 to: ' . $existing_contact['defaultFields']['phoneNumbers'][0]['id']);
             }
         } else {
             // Create new contact
-            error_log('Quo: No existing contact found, creating new contact');
             $result = $api->create_contact($contact_data);
-            error_log('Quo: Create contact result: ' . json_encode($result));
             
             if ($result !== false && isset($result['data'])) {
                 // Store Quo Contact ID in field 30
                 if (isset($result['data']['id'])) {
                     $_POST['input_30'] = $result['data']['id'];
-                    error_log('Quo: Set input_30 to: ' . $result['data']['id']);
                 }
                 
                 // Store Quo Phone ID in field 31
                 if (isset($result['data']['defaultFields']['phoneNumbers'][0]['id'])) {
                     $_POST['input_31'] = $result['data']['defaultFields']['phoneNumbers'][0]['id'];
-                    error_log('Quo: Set input_31 to: ' . $result['data']['defaultFields']['phoneNumbers'][0]['id']);
                 }
-            } else {
-                error_log('Quo: Create contact failed or returned false');
             }
         }
-        
-        error_log('Quo: Exiting create_quo_contact');
     }
     
     /**
@@ -247,7 +209,6 @@ class AKS_SendPulse_Form_Handler {
     private function create_sendpulse_contact($contact_data) {
         // Check if API credentials are configured
         if (empty($this->settings['api_id']) || empty($this->settings['api_secret'])) {
-            error_log('SendPulse: API credentials not configured');
             return;
         }
         
@@ -263,8 +224,6 @@ class AKS_SendPulse_Form_Handler {
         
         if ($search_result['exists']) {
             $contact_id = $search_result['contact_id'];
-            error_log('SendPulse: Found existing contact ' . $contact_id);
-            error_log('SendPulse: Match details - has_email: ' . ($search_result['has_email'] ? 'YES' : 'NO') . ', has_phone: ' . ($search_result['has_phone'] ? 'YES' : 'NO'));
             
             // Get full contact details to extract all IDs
             $contact = $api->get_contact($contact_id);
@@ -279,43 +238,27 @@ class AKS_SendPulse_Form_Handler {
                 $submitted_last = $contact_data['lastName'];
                 
                 if ($current_first !== $submitted_first || $current_last !== $submitted_last) {
-                    error_log('SendPulse: Name differs - Current: "' . $current_first . ' ' . $current_last . '" vs Submitted: "' . $submitted_first . ' ' . $submitted_last . '"');
-                    error_log('SendPulse: Updating contact name');
-                    $update_result = $api->update_contact_name($contact_id, $submitted_first, $submitted_last);
-                    error_log('SendPulse: Name update result: ' . json_encode($update_result));
-                } else {
-                    error_log('SendPulse: Name matches, no update needed');
+                    $api->update_contact_name($contact_id, $submitted_first, $submitted_last);
                 }
                 
                 // Set base IDs
                 $_POST['input_26'] = $contact_detail['id']; // Contact ID
                 $_POST['input_27'] = $contact_detail['userId']; // User ID
-                error_log('SendPulse: Set contact ID to ' . $contact_detail['id']);
-                error_log('SendPulse: Set user ID to ' . $contact_detail['userId']);
                 
                 // Handle PHONE: If we matched on email only, need to add phone
                 if ($search_result['has_email'] && !$search_result['has_phone'] && !empty($phone)) {
-                    error_log('SendPulse: Adding phone to existing contact (matched on email only)');
                     $phone_result = $api->add_phone_to_contact($contact_id, $phone);
-                    error_log('SendPulse: Phone add result FULL: ' . json_encode($phone_result));
                     
                     // Extract phone ID from add response - check different possible response structures
                     if ($phone_result) {
                         if (isset($phone_result['data']['id'])) {
                             $_POST['input_28'] = $phone_result['data']['id'];
-                            error_log('SendPulse: Set phone ID to ' . $phone_result['data']['id'] . ' (from data.id)');
                         } else if (isset($phone_result['data'][0]['id'])) {
                             $_POST['input_28'] = $phone_result['data'][0]['id'];
-                            error_log('SendPulse: Set phone ID to ' . $phone_result['data'][0]['id'] . ' (from data[0].id)');
                         } else if (isset($phone_result['id'])) {
                             $_POST['input_28'] = $phone_result['id'];
-                            error_log('SendPulse: Set phone ID to ' . $phone_result['id'] . ' (from id)');
                         } else {
-                            error_log('SendPulse: Phone ID not found in standard locations, checking data structure...');
-                            error_log('SendPulse: data keys: ' . (isset($phone_result['data']) ? implode(', ', array_keys($phone_result['data'])) : 'no data key'));
-                            
                             // Fallback: re-fetch contact to get phone ID
-                            error_log('SendPulse: Re-fetching contact to get phone ID');
                             $updated_contact = $api->get_contact($contact_id);
                             if ($updated_contact && isset($updated_contact['data']['phones'])) {
                                 $phone_clean = preg_replace('/[^0-9]/', '', $phone);
@@ -325,7 +268,6 @@ class AKS_SendPulse_Form_Handler {
                                 foreach ($updated_contact['data']['phones'] as $phone_item) {
                                     if ($phone_item['phone'] === $phone_clean) {
                                         $_POST['input_28'] = $phone_item['id'];
-                                        error_log('SendPulse: Set phone ID to ' . $phone_item['id'] . ' (from re-fetch)');
                                         break;
                                     }
                                 }
@@ -335,35 +277,27 @@ class AKS_SendPulse_Form_Handler {
                 } else if (isset($contact_detail['phones']) && !empty($contact_detail['phones'])) {
                     // Phone already exists, get ID from contact
                     $_POST['input_28'] = $contact_detail['phones'][0]['id'];
-                    error_log('SendPulse: Set phone ID to ' . $contact_detail['phones'][0]['id'] . ' (from existing contact)');
                 }
                 
                 // Handle EMAIL: If we matched on phone only, need to add email
                 if ($search_result['has_phone'] && !$search_result['has_email'] && !empty($email)) {
-                    error_log('SendPulse: Adding email to existing contact (matched on phone only)');
                     $email_result = $api->add_email_to_contact($contact_id, $email);
-                    error_log('SendPulse: Email add response: ' . json_encode($email_result));
                     
                     // Extract email ID from add response - check different possible response structures
                     if ($email_result) {
                         if (isset($email_result['data']['id'])) {
                             $_POST['input_29'] = $email_result['data']['id'];
-                            error_log('SendPulse: Set email ID to ' . $email_result['data']['id'] . ' (from data.id)');
                         } else if (isset($email_result['data'][0]['id'])) {
                             $_POST['input_29'] = $email_result['data'][0]['id'];
-                            error_log('SendPulse: Set email ID to ' . $email_result['data'][0]['id'] . ' (from data[0].id)');
                         } else if (isset($email_result['id'])) {
                             $_POST['input_29'] = $email_result['id'];
-                            error_log('SendPulse: Set email ID to ' . $email_result['id'] . ' (from id)');
                         } else {
                             // Fallback: re-fetch contact to get email ID
-                            error_log('SendPulse: Email ID not in add response, re-fetching contact');
                             $updated_contact = $api->get_contact($contact_id);
                             if ($updated_contact && isset($updated_contact['data']['emails'])) {
                                 foreach ($updated_contact['data']['emails'] as $email_item) {
                                     if ($email_item['email'] === $email) {
                                         $_POST['input_29'] = $email_item['id'];
-                                        error_log('SendPulse: Set email ID to ' . $email_item['id'] . ' (from re-fetch)');
                                         break;
                                     }
                                 }
@@ -373,7 +307,6 @@ class AKS_SendPulse_Form_Handler {
                 } else if (isset($contact_detail['emails']) && !empty($contact_detail['emails'])) {
                     // Email already exists (we matched on it), get ID from contact
                     $_POST['input_29'] = $contact_detail['emails'][0]['id'];
-                    error_log('SendPulse: Set email ID to ' . $contact_detail['emails'][0]['id'] . ' (from existing contact)');
                 }
             }
             
@@ -381,15 +314,11 @@ class AKS_SendPulse_Form_Handler {
         }
         
         // Contact doesn't exist - create new
-        error_log('SendPulse: Creating new contact');
         $result = $api->create_contact($contact_data);
         
         if ($result === false) {
-            error_log('SendPulse: Failed to create contact');
             return;
         }
-        
-        error_log('SendPulse: Contact created successfully');
         
         // Extract IDs from response and update POST data so they're saved to the entry
         if (isset($result['data'])) {
@@ -398,22 +327,18 @@ class AKS_SendPulse_Form_Handler {
             // Populate Gravity Forms fields with SendPulse IDs
             if (isset($data['id'])) {
                 $_POST['input_26'] = $data['id']; // SendPulse Contact ID
-                error_log('SendPulse: Set contact ID to ' . $data['id']);
             }
             
             if (isset($data['userId'])) {
                 $_POST['input_27'] = $data['userId']; // SendPulse User ID
-                error_log('SendPulse: Set user ID to ' . $data['userId']);
             }
             
             if (isset($data['phones'][0]['id'])) {
                 $_POST['input_28'] = $data['phones'][0]['id']; // SendPulse Phone ID
-                error_log('SendPulse: Set phone ID to ' . $data['phones'][0]['id']);
             }
             
             if (isset($data['emails'][0]['id'])) {
                 $_POST['input_29'] = $data['emails'][0]['id']; // SendPulse Email ID
-                error_log('SendPulse: Set email ID to ' . $data['emails'][0]['id']);
             }
         }
     }
@@ -425,9 +350,6 @@ class AKS_SendPulse_Form_Handler {
      * @param array $form The form object
      */
     public function handle_form_3_opt_ins($entry, $form) {
-        error_log('Form 3: handle_form_3_opt_ins called');
-        error_log('Form 3: Entry ID: ' . rgar($entry, 'id'));
-        
         // Get the opt-in field values
         $email_list_opt_in = rgar($entry, '22'); // Field 22: Email list opt-in (Yes/No)
         $sms_opt_in = rgar($entry, '23');        // Field 23: SMS opt-in (Yes/No)
@@ -435,29 +357,20 @@ class AKS_SendPulse_Form_Handler {
         // Get user email - field 29 in Form 3
         $email = rgar($entry, '29');
         
-        error_log('Form 3: Raw values - Field 22: "' . $email_list_opt_in . '", Field 23: "' . $sms_opt_in . '", Email: "' . $email . '"');
-        
         // Get user by email to find their SendPulse contact ID
         if (empty($email)) {
-            error_log('Form 3: No email found in entry');
             return;
         }
         
         $user = get_user_by('email', $email);
         if (!$user) {
-            error_log('Form 3: User not found for email: ' . $email);
             return;
         }
         
         $contact_id = get_user_meta($user->ID, 'sendpulse_contact_id', true);
         if (empty($contact_id)) {
-            error_log('Form 3: No SendPulse contact ID found for user ' . $user->ID);
             return;
         }
-        
-        error_log('Form 3: Processing opt-ins for user ' . $user->ID . ' (Contact ID: ' . $contact_id . ')');
-        error_log('Form 3: Email list opt-in (field 22): ' . $email_list_opt_in);
-        error_log('Form 3: SMS opt-in (field 23): ' . $sms_opt_in);
         
         // Initialize API
         if (!class_exists('AKS_SendPulse_API')) {
@@ -468,30 +381,12 @@ class AKS_SendPulse_Form_Handler {
         
         // Add to email list if they said "Yes"
         if ($email_list_opt_in === 'Yes') {
-            error_log('Form 3: Adding email ' . $email . ' to addressbook 1102646');
-            $list_result = $api->add_to_mailing_list($email, 1102646);
-            
-            if ($list_result === false) {
-                error_log('Form 3: Failed to add email to addressbook');
-            } else {
-                error_log('Form 3: Successfully added to addressbook');
-            }
-        } else {
-            error_log('Form 3: User declined email list (value: ' . $email_list_opt_in . ')');
+            $api->add_to_mailing_list($email, 1102646);
         }
         
         // Add SMS tag if they said "Yes"
         if ($sms_opt_in === 'Yes') {
-            error_log('Form 3: Adding tag 55139 (SMS opted-in) to contact ' . $contact_id);
-            $tag_result = $api->add_tag_to_contact($contact_id, 55139);
-            
-            if ($tag_result === false) {
-                error_log('Form 3: Failed to add tag');
-            } else {
-                error_log('Form 3: Successfully added tag');
-            }
-        } else {
-            error_log('Form 3: User declined SMS opt-in (value: ' . $sms_opt_in . ')');
+            $api->add_tag_to_contact($contact_id, 55139);
         }
         
         // Add student data as a note
@@ -510,7 +405,6 @@ class AKS_SendPulse_Form_Handler {
         $child_entry_ids_string = rgar($entry, '21');
         
         if (empty($child_entry_ids_string)) {
-            error_log('Form 3: No student data to add as note');
             return;
         }
         
@@ -546,21 +440,13 @@ class AKS_SendPulse_Form_Handler {
         }
         
         if (empty($student_lines)) {
-            error_log('Form 3: No valid student data found');
             return;
         }
         
         // Format the note message
         $note_message = "Student Names and Birthdays:\n" . implode("\n", $student_lines);
         
-        error_log('Form 3: Adding student note to contact ' . $contact_id);
-        $note_result = $api->add_note_to_contact($contact_id, $note_message);
-        
-        if ($note_result === false) {
-            error_log('Form 3: Failed to add student note');
-        } else {
-            error_log('Form 3: Successfully added student note');
-        }
+        $api->add_note_to_contact($contact_id, $note_message);
     }
     
     /**
@@ -573,24 +459,10 @@ class AKS_SendPulse_Form_Handler {
     private function add_to_list_and_tag($api, $contact_id, $email = '') {
         // Add to "Updates and info" mailing list (ID: 1102646)
         if (!empty($email)) {
-            error_log('SendPulse: Adding email ' . $email . ' to addressbook 1102646');
-            $list_result = $api->add_to_mailing_list($email, 1102646);
-            
-            if ($list_result === false) {
-                error_log('SendPulse: Failed to add email to addressbook');
-            } else {
-                error_log('SendPulse: Successfully added to addressbook');
-            }
+            $api->add_to_mailing_list($email, 1102646);
         }
         
         // Add "SMS opted-in" tag (tag ID: 55139)
-        error_log('SendPulse: Adding tag 55139 (SMS opted-in) to contact ' . $contact_id);
-        $tag_result = $api->add_tags($contact_id, array('SMS opted-in'));
-        
-        if ($tag_result === false) {
-            error_log('SendPulse: Failed to add tag');
-        } else {
-            error_log('SendPulse: Successfully added tag');
-        }
+        $api->add_tags($contact_id, array('SMS opted-in'));
     }
 }

@@ -27,15 +27,15 @@ class AKS_DocuSeal_Integration {
      * @param bool $is_parent Whether user is parent/guardian
      * @return string Complete redirect URL
      */
-    private function get_redirect_url($is_parent) {
-        if ($is_parent) {
-            // Parent/guardian redirects to My Account page
-            return wc_get_page_permalink('myaccount');
-        } else {
-            // Non-parent redirects to homepage
-            return home_url('/');
-        }
-    }
+	private function get_redirect_url($is_parent) {
+		if ($is_parent) {
+			// Parent/guardian redirects to My Account page
+			return 'https://allknoxswim.com/account/';
+		} else {
+			// Non-parent redirects to homepage
+			return 'https://allknoxswim.com/';
+		}
+	}
     
     /**
      * Allow custom DocuSeal tags in TinyMCE
@@ -306,7 +306,7 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
                     $template_id = $response_data['id'];
                     
                     // Get the redirect URL based on parent/guardian status (NOW DYNAMIC!)
-                    $redirect_url = $this->get_redirect_url($is_parent);
+					$redirect_url = $this->get_redirect_url($is_parent);
                     
                     // Create a submission to send the document for signing
                     $submission_payload = array(
@@ -321,7 +321,7 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
                             )
                         )
                     );
-                    
+
                     // Initialize new cURL request for submission
                     $curl_submission = curl_init();
                     

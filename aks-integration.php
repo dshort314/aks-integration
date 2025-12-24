@@ -136,7 +136,20 @@ class AKS_Integration {
 		 */
 		require_once plugin_dir_path( __FILE__ ) . 'includes/class-aks-user-registration.php';
 
+		// Load Waiver Reset Admin
+		if (is_admin()) {
+			require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/admin/class-waiver-reset-admin.php';
+		}
 
+		// CRM User Sync Tool
+		require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/admin/class-crm-user-sync.php';
+		AKS_CRM_User_Sync::get_instance();
+
+		// SMS Consent Sync Tool
+		require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/admin/class-sms-consent-sync.php';
+		AKS_SMS_Consent_Sync::get_instance();
+		
+		
         // Load WooCommerce integration if WooCommerce is active
         if (class_exists('WooCommerce')) {
             if (file_exists(AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-woocommerce-account-customization.php')) {

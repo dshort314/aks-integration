@@ -990,25 +990,20 @@ class AKS_WooCommerce_Account_Customization {
      * Update Quo and SendPulse when phone number changes
      */
     public function update_crm_phone_number($user_id) {
-        error_log('=== CRM Phone Update: START ===');
-        error_log('CRM Update: User ID: ' . $user_id);
         
         if (!$user_id) {
             return;
         }
         
         if (!isset($_POST['billing_phone'])) {
-            error_log('CRM Update: No billing_phone in POST');
             return;
         }
         
         $new_phone_raw = wp_unslash($_POST['billing_phone']);
         $new_digits = preg_replace('/\D+/', '', (string) $new_phone_raw);
         
-        error_log('CRM Update: New phone: "' . $new_phone_raw . '" -> digits: "' . $new_digits . '"');
         
         if (strlen($new_digits) !== 10) {
-            error_log('CRM Update: Not 10 digits, skipping');
             return;
         }
         
@@ -1023,7 +1018,6 @@ class AKS_WooCommerce_Account_Customization {
         // Get user details
         $user = get_userdata($user_id);
         if (!$user) {
-            error_log('CRM Update: User not found');
             return;
         }
         
@@ -1033,36 +1027,29 @@ class AKS_WooCommerce_Account_Customization {
         $quo_contact_id = get_user_meta($user_id, 'quo_contact_id', true);
         $quo_phone_id = get_user_meta($user_id, 'quo_phone_id', true);
         
-        error_log('CRM Update: SendPulse Contact ID: ' . $sendpulse_contact_id . ', Phone ID: ' . $sendpulse_phone_id);
-        error_log('CRM Update: Quo Contact ID: ' . $quo_contact_id . ', Phone ID: ' . $quo_phone_id);
         
         // Update SendPulse
         if (!empty($sendpulse_contact_id) && !empty($sendpulse_phone_id)) {
             $this->update_sendpulse_phone($sendpulse_contact_id, $sendpulse_phone_id, $formatted_phone);
         } else {
-            error_log('CRM Update: Missing SendPulse IDs, skipping SendPulse update');
         }
         
         // Update Quo
         if (!empty($quo_contact_id) && !empty($quo_phone_id)) {
             $this->update_quo_phone($quo_contact_id, $quo_phone_id, $formatted_phone, $user->first_name, $user->last_name);
         } else {
-            error_log('CRM Update: Missing Quo IDs, skipping Quo update');
         }
         
-        error_log('=== CRM Phone Update: END ===');
     }
     
     /**
      * Update phone number in SendPulse using PUT /contacts/{contactId}/phones/{phoneId}
      */
     private function update_sendpulse_phone($contact_id, $phone_id, $phone) {
-        error_log('SendPulse Update: Updating contact ' . $contact_id . ', phone ID ' . $phone_id);
         
         // Get settings
         $settings = get_option('aks_sendpulse_settings');
         if (empty($settings['api_id']) || empty($settings['api_secret'])) {
-            error_log('SendPulse Update: API credentials not configured');
             return;
         }
         
@@ -1080,7 +1067,6 @@ class AKS_WooCommerce_Account_Customization {
         $access_token = $method->invoke($api);
         
         if (!$access_token) {
-            error_log('SendPulse Update: Failed to get access token');
             return;
         }
         
@@ -1092,7 +1078,6 @@ class AKS_WooCommerce_Account_Customization {
             $phone_sendpulse = $phone_digits;
         }
         
-        error_log('SendPulse Update: Formatted phone: ' . $phone_sendpulse);
         
         $url = 'https://api.sendpulse.com/crm/v1/contacts/' . $contact_id . '/phones/' . $phone_id;
         
@@ -1100,8 +1085,6 @@ class AKS_WooCommerce_Account_Customization {
             'phone' => $phone_sendpulse
         );
         
-        error_log('SendPulse Update: PUT to ' . $url);
-        error_log('SendPulse Update: Body: ' . json_encode($body));
         
         $curl = curl_init();
         curl_setopt_array($curl, array(
@@ -1126,16 +1109,12 @@ class AKS_WooCommerce_Account_Customization {
         curl_close($curl);
         
         if ($curl_error) {
-            error_log('SendPulse Update: cURL Error - ' . $curl_error);
             return;
         }
         
-        error_log('SendPulse Update: HTTP ' . $response_code . ' - Response: ' . $response_body);
         
         if ($response_code >= 200 && $response_code < 300) {
-            error_log('SendPulse Update: Phone updated successfully');
         } else {
-            error_log('SendPulse Update: Update failed with HTTP ' . $response_code);
         }
     }
     
@@ -1143,12 +1122,10 @@ class AKS_WooCommerce_Account_Customization {
      * Update phone number in Quo using PATCH /contacts/{id}
      */
     private function update_quo_phone($contact_id, $phone_id, $phone, $first_name, $last_name) {
-        error_log('Quo Update: Updating contact ' . $contact_id . ', phone ID ' . $phone_id);
         
         // Get settings
         $settings = get_option('aks_sendpulse_settings');
         if (empty($settings['quo_api_key'])) {
-            error_log('Quo Update: API key not configured');
             return;
         }
         
@@ -1162,7 +1139,6 @@ class AKS_WooCommerce_Account_Customization {
             $phone_e164 = '+' . $phone_digits;
         }
         
-        error_log('Quo Update: Formatted phone: ' . $phone_e164);
         
         $url = 'https://api.openphone.com/v1/contacts/' . $contact_id;
         
@@ -1180,8 +1156,6 @@ class AKS_WooCommerce_Account_Customization {
             )
         );
         
-        error_log('Quo Update: PATCH to ' . $url);
-        error_log('Quo Update: Body: ' . json_encode($body));
         
         $curl = curl_init();
         curl_setopt_array($curl, array(
@@ -1206,16 +1180,12 @@ class AKS_WooCommerce_Account_Customization {
         curl_close($curl);
         
         if ($curl_error) {
-            error_log('Quo Update: cURL Error - ' . $curl_error);
             return;
         }
         
-        error_log('Quo Update: HTTP ' . $response_code . ' - Response: ' . $response_body);
         
         if ($response_code >= 200 && $response_code < 300) {
-            error_log('Quo Update: Phone updated successfully');
         } else {
-            error_log('Quo Update: Update failed with HTTP ' . $response_code);
         }
     }
     
