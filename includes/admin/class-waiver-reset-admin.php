@@ -25,6 +25,15 @@ class AKS_Waiver_Reset_Admin {
         add_filter('manage_users_columns', array($this, 'add_waiver_column'));
         add_filter('manage_users_custom_column', array($this, 'show_waiver_column'), 10, 3);
         
+        // Make waiver column sortable
+        add_filter('manage_users_sortable_columns', array($this, 'make_waiver_column_sortable'));
+        
+        // Add waiver filter dropdown
+        add_action('restrict_manage_users', array($this, 'add_waiver_filter_dropdown'));
+        
+        // Handle sorting and filtering
+        add_action('pre_get_users', array($this, 'handle_waiver_sorting_and_filtering'));
+        
         // Add row action to users list
         add_filter('user_row_actions', array($this, 'add_row_action'), 10, 2);
         
@@ -152,6 +161,117 @@ class AKS_Waiver_Reset_Admin {
             return '<span style="color: #ffb900;">⏳ Pending</span>';
         } else {
             return '<span style="color: #dc3232;">✗ Not Sent</span>';
+        }
+    }
+    
+    /**
+     * Make waiver column sortable
+     */
+    public function make_waiver_column_sortable($columns) {
+        $columns['waiver_status'] = 'waiver_status';
+        return $columns;
+    }
+    
+    /**
+     * Add waiver filter dropdown above users table
+     */
+    public function add_waiver_filter_dropdown($which) {
+        if ($which !== 'top') {
+            return;
+        }
+        
+        $current = isset($_GET['waiver_filter']) ? sanitize_text_field($_GET['waiver_filter']) : '';
+        ?>
+        <select name="waiver_filter" style="float:none; margin-left: 6px;">
+            <option value=""><?php esc_html_e('All Waiver Statuses', 'aks-integration'); ?></option>
+            <option value="signed" <?php selected($current, 'signed'); ?>><?php esc_html_e('✓ Signed', 'aks-integration'); ?></option>
+            <option value="pending" <?php selected($current, 'pending'); ?>><?php esc_html_e('⏳ Pending', 'aks-integration'); ?></option>
+            <option value="not_sent" <?php selected($current, 'not_sent'); ?>><?php esc_html_e('✗ Not Sent', 'aks-integration'); ?></option>
+        </select>
+        <?php
+        submit_button( __( 'Filter', 'aks-integration' ), '', 'filter_action', false );
+    }
+    
+    /**
+     * Handle sorting and filtering for waiver column
+     */
+    public function handle_waiver_sorting_and_filtering($query) {
+        if (!is_admin()) {
+            return;
+        }
+        
+        $screen = get_current_screen();
+        if (!$screen || $screen->id !== 'users') {
+            return;
+        }
+        
+        // Handle sorting
+        if (isset($query->query_vars['orderby']) && $query->query_vars['orderby'] === 'waiver_status') {
+            $query->set('meta_key', 'sr_waiver_signed');
+            $query->set('orderby', 'meta_value');
+        }
+        
+        // Handle filtering
+        if (!empty($_GET['waiver_filter'])) {
+            $filter = sanitize_text_field($_GET['waiver_filter']);
+            
+            $meta_query = $query->get('meta_query');
+            if (!is_array($meta_query)) {
+                $meta_query = array();
+            }
+            
+            switch ($filter) {
+                case 'signed':
+                    // Waiver is signed
+                    $meta_query[] = array(
+                        'key' => 'sr_waiver_signed',
+                        'value' => 'yes',
+                        'compare' => '='
+                    );
+                    break;
+                    
+                case 'pending':
+                    // Has docuseal_url but waiver not signed
+                    $meta_query['relation'] = 'AND';
+                    $meta_query[] = array(
+                        'key' => 'docuseal_url',
+                        'value' => '',
+                        'compare' => '!='
+                    );
+                    $meta_query[] = array(
+                        'relation' => 'OR',
+                        array(
+                            'key' => 'sr_waiver_signed',
+                            'value' => 'yes',
+                            'compare' => '!='
+                        ),
+                        array(
+                            'key' => 'sr_waiver_signed',
+                            'compare' => 'NOT EXISTS'
+                        )
+                    );
+                    break;
+                    
+                case 'not_sent':
+                    // No docuseal_url
+                    $meta_query[] = array(
+                        'relation' => 'OR',
+                        array(
+                            'key' => 'docuseal_url',
+                            'value' => '',
+                            'compare' => '='
+                        ),
+                        array(
+                            'key' => 'docuseal_url',
+                            'compare' => 'NOT EXISTS'
+                        )
+                    );
+                    break;
+            }
+            
+            if (!empty($meta_query)) {
+                $query->set('meta_query', $meta_query);
+            }
         }
     }
     

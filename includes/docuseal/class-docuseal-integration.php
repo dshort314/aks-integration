@@ -311,7 +311,7 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
                     // Create a submission to send the document for signing
                     $submission_payload = array(
                         'template_id' => $template_id,
-                        'send_email' => true,
+                        'send_email' => !$is_parent,
                         'completed_redirect_url' => $redirect_url,
                         'submitters' => array(
                             array(

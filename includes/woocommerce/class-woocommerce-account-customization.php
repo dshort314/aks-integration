@@ -18,7 +18,6 @@ class AKS_WooCommerce_Account_Customization {
         'videos'         => 'videos',
         'store_account'  => 'store-account',
         'purchases'      => 'purchases',
-        'gift_cards'     => 'gift-cards',
         'announcements'  => 'announcements',
         'delete_account' => 'delete-account',
     ];
@@ -134,7 +133,6 @@ class AKS_WooCommerce_Account_Customization {
         add_action('woocommerce_account_' . $this->endpoints['videos'] . '_endpoint', array($this, 'render_videos'));
         add_action('woocommerce_account_' . $this->endpoints['store_account'] . '_endpoint', array($this, 'render_store_account'));
         add_action('woocommerce_account_' . $this->endpoints['purchases'] . '_endpoint', array($this, 'render_purchases'));
-        add_action('woocommerce_account_' . $this->endpoints['gift_cards'] . '_endpoint', array($this, 'render_gift_cards'));
         add_action('woocommerce_account_' . $this->endpoints['announcements'] . '_endpoint', array($this, 'render_announcements'));
         add_action('woocommerce_account_' . $this->endpoints['delete_account'] . '_endpoint', array($this, 'render_delete_account'));
     }
@@ -405,12 +403,11 @@ class AKS_WooCommerce_Account_Customization {
                 // Add Store Account submenu
                 setupSubmenuToggle(".woocommerce-MyAccount-navigation-link--store-account", [
                     { url: "' . esc_js(wc_get_endpoint_url('purchases', '', wc_get_page_permalink('myaccount'))) . '", label: "Purchases" },
-                    { url: "' . esc_js(wc_get_endpoint_url('payment-methods', '', wc_get_page_permalink('myaccount'))) . '", label: "Payment Methods" },
-                    { url: "' . esc_js(wc_get_endpoint_url('gift-cards', '', wc_get_page_permalink('myaccount'))) . '", label: "Gift Cards" }
+                    { url: "' . esc_js(wc_get_endpoint_url('payment-methods', '', wc_get_page_permalink('myaccount'))) . '", label: "Payment Methods" }
                 ]);
                 
                 // Hide the individual tabs from main menu
-                $(".woocommerce-MyAccount-navigation-link--purchases, .woocommerce-MyAccount-navigation-link--payment-methods, .woocommerce-MyAccount-navigation-link--gift-cards").hide();
+                $(".woocommerce-MyAccount-navigation-link--purchases, .woocommerce-MyAccount-navigation-link--payment-methods").hide();
                 
                 // Add Profile submenu
                 setupSubmenuToggle(".woocommerce-MyAccount-navigation-link--edit-account", [
@@ -463,7 +460,6 @@ class AKS_WooCommerce_Account_Customization {
         // Store Account sub-tabs (will be moved under Store Account via CSS/JS)
         $new[$this->endpoints['purchases']]      = __('Purchases', 'aks-integration');
         $new['payment-methods']                  = __('Payment Methods', 'woocommerce');
-        $new[$this->endpoints['gift_cards']]     = __('Gift Cards', 'aks-integration');
         
         // Profile (parent tab - no link, only sub-tabs - handled by CSS/JS)
         $new['edit-account']                     = __('Profile', 'aks-integration');
@@ -737,20 +733,6 @@ class AKS_WooCommerce_Account_Customization {
         
         echo '<div class="aks-wac-panel">';
         echo '<p>' . esc_html__('Please select an option from the submenu above.', 'aks-integration') . '</p>';
-        echo '</div>';
-    }
-    
-    public function render_gift_cards() {
-        $this->heading(__('Gift Cards', 'aks-integration'));
-        
-        $user_id = get_current_user_id();
-        $balance = get_user_meta($user_id, self::META_STORE_CREDIT, true);
-        if ($balance === '') {
-            $balance = 0;
-        }
-        
-        echo '<div class="aks-wac-panel">';
-        echo '<p>' . esc_html__('Current Balance:', 'aks-integration') . ' <strong>' . wc_price($balance) . '</strong></p>';
         echo '</div>';
     }
     
