@@ -114,6 +114,12 @@ class AKS_Integration {
             new AKS_SendPulse_Form_Handler();
         }
         
+        // Load Student Note Sync (syncs student data to SendPulse notes)
+        if (file_exists(AKS_INTEGRATION_PLUGIN_DIR . 'includes/sendpulse/class-student-note-sync.php')) {
+            require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/sendpulse/class-student-note-sync.php';
+            AKS_Student_Note_Sync::get_instance();
+        }
+        
         // Load DocuSeal integration
         if (file_exists(AKS_INTEGRATION_PLUGIN_DIR . 'includes/docuseal/class-docuseal-integration.php')) {
             require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/docuseal/class-docuseal-integration.php';
@@ -136,20 +142,7 @@ class AKS_Integration {
 		 */
 		require_once plugin_dir_path( __FILE__ ) . 'includes/class-aks-user-registration.php';
 
-		// Load Waiver Reset Admin
-		if (is_admin()) {
-			require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/admin/class-waiver-reset-admin.php';
-		}
 
-		// CRM User Sync Tool
-		require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/admin/class-crm-user-sync.php';
-		AKS_CRM_User_Sync::get_instance();
-
-		// SMS Consent Sync Tool
-		require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/admin/class-sms-consent-sync.php';
-		AKS_SMS_Consent_Sync::get_instance();
-		
-		
         // Load WooCommerce integration if WooCommerce is active
         if (class_exists('WooCommerce')) {
             if (file_exists(AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-woocommerce-account-customization.php')) {
@@ -168,12 +161,6 @@ class AKS_Integration {
                 require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-donated-lessons-handler.php';
                 AKS_Donated_Lessons_Handler::get_instance();
             }
-			
-			// Load Checkout Bump Products
-		   if (file_exists(AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-checkout-bump-products.php')) {
-			   require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-checkout-bump-products.php';
-			   AKS_Checkout_Bump_Products::get_instance();
-		   }
         }
     }
     
@@ -206,6 +193,13 @@ class AKS_Integration {
         register_meta('user', 'sendpulse_email_id', array(
             'type' => 'integer',
             'description' => 'SendPulse Email ID',
+            'single' => true,
+            'show_in_rest' => false,
+        ));
+        
+        register_meta('user', 'sendpulse_comment_id', array(
+            'type' => 'integer',
+            'description' => 'SendPulse Comment/Note ID',
             'single' => true,
             'show_in_rest' => false,
         ));
@@ -332,6 +326,15 @@ class AKS_Integration {
                     <input type="text" name="sendpulse_email_id" id="sendpulse_email_id" 
                            value="<?php echo esc_attr(get_user_meta($user->ID, 'sendpulse_email_id', true)); ?>" 
                            class="regular-text" />
+                </td>
+            </tr>
+            <tr>
+                <th><label for="sendpulse_comment_id"><?php esc_html_e('SendPulse Comment ID', 'aks-integration'); ?></label></th>
+                <td>
+                    <input type="text" name="sendpulse_comment_id" id="sendpulse_comment_id" 
+                           value="<?php echo esc_attr(get_user_meta($user->ID, 'sendpulse_comment_id', true)); ?>" 
+                           class="regular-text" />
+                    <p class="description"><?php esc_html_e('ID of the student information note in SendPulse', 'aks-integration'); ?></p>
                 </td>
             </tr>
             <tr>
@@ -467,6 +470,7 @@ class AKS_Integration {
             'sendpulse_user_id',
             'sendpulse_phone_id',
             'sendpulse_email_id',
+            'sendpulse_comment_id',
             'quo_contact_id',
             'quo_phone_id',
             'docuseal_url'
