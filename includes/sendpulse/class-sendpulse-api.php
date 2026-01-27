@@ -2,6 +2,7 @@
 /**
  * SendPulse API Client
  * Handles communication with SendPulse CRM API
+ * Now includes API logging
  */
 
 class AKS_SendPulse_API {
@@ -15,6 +16,16 @@ class AKS_SendPulse_API {
     public function __construct($api_id, $api_secret) {
         $this->api_id = $api_id;
         $this->api_secret = $api_secret;
+    }
+    
+    /**
+     * Get the API logger instance
+     */
+    private function get_logger() {
+        if (class_exists('AKS_API_Logger')) {
+            return AKS_API_Logger::get_instance();
+        }
+        return null;
     }
     
     /**
@@ -37,6 +48,20 @@ class AKS_SendPulse_API {
             'client_secret' => $this->api_secret
         );
         
+        $logger = $this->get_logger();
+        $log_data = null;
+        
+        if ($logger) {
+            $log_data = $logger->log_request(
+                'SendPulse',
+                $url,
+                'POST',
+                array('Content-Type' => 'application/json'),
+                $body,
+                'Get access token'
+            );
+        }
+        
         $response = wp_remote_post($url, array(
             'headers' => array(
                 'Content-Type' => 'application/json'
@@ -46,11 +71,19 @@ class AKS_SendPulse_API {
         ));
         
         if (is_wp_error($response)) {
+            if ($logger && $log_data) {
+                $logger->log_response($log_data, 0, array(), $response->get_error_message(), false, $response->get_error_message());
+            }
             return false;
         }
         
         $response_code = wp_remote_retrieve_response_code($response);
         $response_body = wp_remote_retrieve_body($response);
+        $response_headers = wp_remote_retrieve_headers($response)->getAll();
+        
+        if ($logger && $log_data) {
+            $logger->log_response($log_data, $response_code, $response_headers, $response_body, $response_code === 200);
+        }
         
         if ($response_code !== 200) {
             return false;
@@ -69,6 +102,93 @@ class AKS_SendPulse_API {
     }
     
     /**
+     * Make an API request with logging
+     */
+    private function make_request($method, $endpoint, $body = null, $context = '', $user_id = null, $user_email = '') {
+        $access_token = $this->get_access_token();
+        
+        if (!$access_token) {
+            return array('success' => false, 'error' => 'Failed to get access token');
+        }
+        
+        $url = $this->api_base_url . $endpoint;
+        $logger = $this->get_logger();
+        $log_data = null;
+        
+        $headers = array(
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer ' . $access_token
+        );
+        
+        // For logging, mask the token
+        $log_headers = array(
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer [REDACTED]'
+        );
+        
+        if ($logger) {
+            $log_data = $logger->log_request(
+                'SendPulse',
+                $url,
+                $method,
+                $log_headers,
+                $body,
+                $context,
+                $user_id,
+                $user_email
+            );
+        }
+        
+        $args = array(
+            'headers' => $headers,
+            'timeout' => 30
+        );
+        
+        if ($body !== null) {
+            $args['body'] = json_encode($body);
+        }
+        
+        switch ($method) {
+            case 'GET':
+                $response = wp_remote_get($url, $args);
+                break;
+            case 'POST':
+                $response = wp_remote_post($url, $args);
+                break;
+            case 'PUT':
+            case 'DELETE':
+                $args['method'] = $method;
+                $response = wp_remote_request($url, $args);
+                break;
+            default:
+                $response = wp_remote_post($url, $args);
+        }
+        
+        if (is_wp_error($response)) {
+            if ($logger && $log_data) {
+                $logger->log_response($log_data, 0, array(), $response->get_error_message(), false, $response->get_error_message());
+            }
+            return array('success' => false, 'error' => $response->get_error_message());
+        }
+        
+        $response_code = wp_remote_retrieve_response_code($response);
+        $response_body = wp_remote_retrieve_body($response);
+        $response_headers = wp_remote_retrieve_headers($response)->getAll();
+        $success = ($response_code >= 200 && $response_code < 300);
+        
+        if ($logger && $log_data) {
+            $logger->log_response($log_data, $response_code, $response_headers, $response_body, $success);
+        }
+        
+        return array(
+            'success' => $success,
+            'code' => $response_code,
+            'body' => $response_body,
+            'data' => json_decode($response_body, true)
+        );
+    }
+    
+    /**
      * Search for existing contact by email or phone
      * 
      * @param string $email Email to search
@@ -76,18 +196,9 @@ class AKS_SendPulse_API {
      * @return array ['exists' => bool, 'contact_id' => int|null, 'has_email' => bool, 'has_phone' => bool]
      */
     public function search_contact($email = '', $phone = '') {
-        $access_token = $this->get_access_token();
-        
-        if (!$access_token) {
-            return array('exists' => false, 'contact_id' => null, 'has_email' => false, 'has_phone' => false);
-        }
-        
-        $url = $this->api_base_url . '/crm/v1/contacts/get-list';
-        
         // Search with both email AND phone first
         if (!empty($email) && !empty($phone)) {
             $phone_clean = preg_replace('/[^0-9]/', '', $phone);
-            // Get last 10 digits for search (to match regardless of country code)
             if (strlen($phone_clean) > 10) {
                 $phone_clean = substr($phone_clean, -10);
             }
@@ -99,23 +210,11 @@ class AKS_SendPulse_API {
                 'offset' => 0
             );
             
-            $response = wp_remote_post($url, array(
-                'headers' => array(
-                    'Content-Type' => 'application/json',
-                    'Authorization' => 'Bearer ' . $access_token
-                ),
-                'body' => json_encode($body),
-                'timeout' => 30
-            ));
+            $result = $this->make_request('POST', '/crm/v1/contacts/get-list', $body, 'Search contact by email+phone', null, $email);
             
-            if (!is_wp_error($response)) {
-                $response_body = wp_remote_retrieve_body($response);
-                $data = json_decode($response_body, true);
-                
-                if (isset($data['data']['total']) && $data['data']['total'] > 0) {
-                    $contact_id = $data['data']['list'][0]['id'];
-                    return array('exists' => true, 'contact_id' => $contact_id, 'has_email' => true, 'has_phone' => true);
-                }
+            if ($result['success'] && isset($result['data']['data']['total']) && $result['data']['data']['total'] > 0) {
+                $contact_id = $result['data']['data']['list'][0]['id'];
+                return array('exists' => true, 'contact_id' => $contact_id, 'has_email' => true, 'has_phone' => true);
             }
         }
         
@@ -128,30 +227,17 @@ class AKS_SendPulse_API {
                 'offset' => 0
             );
             
-            $response = wp_remote_post($url, array(
-                'headers' => array(
-                    'Content-Type' => 'application/json',
-                    'Authorization' => 'Bearer ' . $access_token
-                ),
-                'body' => json_encode($body),
-                'timeout' => 30
-            ));
+            $result = $this->make_request('POST', '/crm/v1/contacts/get-list', $body, 'Search contact by email', null, $email);
             
-            if (!is_wp_error($response)) {
-                $response_body = wp_remote_retrieve_body($response);
-                $data = json_decode($response_body, true);
-                
-                if (isset($data['data']['total']) && $data['data']['total'] > 0) {
-                    $contact_id = $data['data']['list'][0]['id'];
-                    return array('exists' => true, 'contact_id' => $contact_id, 'has_email' => true, 'has_phone' => false);
-                }
+            if ($result['success'] && isset($result['data']['data']['total']) && $result['data']['data']['total'] > 0) {
+                $contact_id = $result['data']['data']['list'][0]['id'];
+                return array('exists' => true, 'contact_id' => $contact_id, 'has_email' => true, 'has_phone' => false);
             }
         }
         
         // Search by phone only
         if (!empty($phone)) {
             $phone_clean = preg_replace('/[^0-9]/', '', $phone);
-            // Get last 10 digits for search (to match regardless of country code)
             if (strlen($phone_clean) > 10) {
                 $phone_clean = substr($phone_clean, -10);
             }
@@ -162,23 +248,11 @@ class AKS_SendPulse_API {
                 'offset' => 0
             );
             
-            $response = wp_remote_post($url, array(
-                'headers' => array(
-                    'Content-Type' => 'application/json',
-                    'Authorization' => 'Bearer ' . $access_token
-                ),
-                'body' => json_encode($body),
-                'timeout' => 30
-            ));
+            $result = $this->make_request('POST', '/crm/v1/contacts/get-list', $body, 'Search contact by phone');
             
-            if (!is_wp_error($response)) {
-                $response_body = wp_remote_retrieve_body($response);
-                $data = json_decode($response_body, true);
-                
-                if (isset($data['data']['total']) && $data['data']['total'] > 0) {
-                    $contact_id = $data['data']['list'][0]['id'];
-                    return array('exists' => true, 'contact_id' => $contact_id, 'has_email' => false, 'has_phone' => true);
-                }
+            if ($result['success'] && isset($result['data']['data']['total']) && $result['data']['data']['total'] > 0) {
+                $contact_id = $result['data']['data']['list'][0]['id'];
+                return array('exists' => true, 'contact_id' => $contact_id, 'has_email' => false, 'has_phone' => true);
             }
         }
         
@@ -192,30 +266,13 @@ class AKS_SendPulse_API {
      * @return array|false Contact data or false on failure
      */
     public function get_contact($contact_id) {
-        $access_token = $this->get_access_token();
+        $result = $this->make_request('GET', '/crm/v1/contacts/' . $contact_id, null, 'Get contact details');
         
-        if (!$access_token) {
-            return false;
+        if ($result['success']) {
+            return $result['data'];
         }
         
-        $url = $this->api_base_url . '/crm/v1/contacts/' . $contact_id;
-        
-        $response = wp_remote_get($url, array(
-            'headers' => array(
-                'Content-Type' => 'application/json',
-                'Authorization' => 'Bearer ' . $access_token
-            ),
-            'timeout' => 30
-        ));
-        
-        if (is_wp_error($response)) {
-            return false;
-        }
-        
-        $response_body = wp_remote_retrieve_body($response);
-        $data = json_decode($response_body, true);
-        
-        return $data;
+        return false;
     }
     
     /**
@@ -241,6 +298,20 @@ class AKS_SendPulse_API {
             'lastName' => $last_name
         );
         
+        $logger = $this->get_logger();
+        $log_data = null;
+        
+        if ($logger) {
+            $log_data = $logger->log_request(
+                'SendPulse',
+                $url,
+                'PUT',
+                array('Content-Type' => 'application/json', 'Authorization' => 'Bearer [REDACTED]'),
+                $body,
+                'Update contact name'
+            );
+        }
+        
         $curl = curl_init();
         curl_setopt_array($curl, array(
             CURLOPT_URL => $url,
@@ -264,10 +335,19 @@ class AKS_SendPulse_API {
         curl_close($curl);
         
         if ($curl_error) {
+            if ($logger && $log_data) {
+                $logger->log_response($log_data, 0, array(), $curl_error, false, $curl_error);
+            }
             return false;
         }
         
-        if ($response_code !== 200) {
+        $success = ($response_code === 200);
+        
+        if ($logger && $log_data) {
+            $logger->log_response($log_data, $response_code, array(), $response_body, $success);
+        }
+        
+        if (!$success) {
             return false;
         }
         
@@ -284,16 +364,7 @@ class AKS_SendPulse_API {
      * @return array|false Response data or false on failure
      */
     public function add_phone_to_contact($contact_id, $phone) {
-        $access_token = $this->get_access_token();
-        
-        if (!$access_token) {
-            return false;
-        }
-        
-        $url = $this->api_base_url . '/crm/v1/contacts/' . $contact_id . '/phones';
-        
         $phone_clean = preg_replace('/[^0-9]/', '', $phone);
-        // Add "1" prefix for US numbers
         if (strlen($phone_clean) === 10) {
             $phone_clean = '1' . $phone_clean;
         }
@@ -302,29 +373,13 @@ class AKS_SendPulse_API {
             'phone' => $phone_clean
         );
         
-        $response = wp_remote_post($url, array(
-            'headers' => array(
-                'Content-Type' => 'application/json',
-                'Authorization' => 'Bearer ' . $access_token
-            ),
-            'body' => json_encode($body),
-            'timeout' => 30
-        ));
+        $result = $this->make_request('POST', '/crm/v1/contacts/' . $contact_id . '/phones', $body, 'Add phone to contact');
         
-        if (is_wp_error($response)) {
-            return false;
+        if ($result['success']) {
+            return $result['data'];
         }
         
-        $response_code = wp_remote_retrieve_response_code($response);
-        $response_body = wp_remote_retrieve_body($response);
-        
-        if ($response_code !== 200 && $response_code !== 201) {
-            return false;
-        }
-        
-        $data = json_decode($response_body, true);
-        
-        return $data;
+        return false;
     }
     
     /**
@@ -335,14 +390,6 @@ class AKS_SendPulse_API {
      * @return array|false Response data or false on failure
      */
     public function add_email_to_contact($contact_id, $email) {
-        $access_token = $this->get_access_token();
-        
-        if (!$access_token) {
-            return false;
-        }
-        
-        $url = $this->api_base_url . '/crm/v1/contacts/' . $contact_id . '/emails';
-        
         $body = array(
             'emails' => array(
                 array(
@@ -352,29 +399,13 @@ class AKS_SendPulse_API {
             )
         );
         
-        $response = wp_remote_post($url, array(
-            'headers' => array(
-                'Content-Type' => 'application/json',
-                'Authorization' => 'Bearer ' . $access_token
-            ),
-            'body' => json_encode($body),
-            'timeout' => 30
-        ));
+        $result = $this->make_request('POST', '/crm/v1/contacts/' . $contact_id . '/emails', $body, 'Add email to contact', null, $email);
         
-        if (is_wp_error($response)) {
-            return false;
+        if ($result['success']) {
+            return $result['data'];
         }
         
-        $response_code = wp_remote_retrieve_response_code($response);
-        $response_body = wp_remote_retrieve_body($response);
-        
-        if ($response_code !== 200 && $response_code !== 201) {
-            return false;
-        }
-        
-        $data = json_decode($response_body, true);
-        
-        return $data;
+        return false;
     }
     
     /**
@@ -384,15 +415,6 @@ class AKS_SendPulse_API {
      * @return array|false Response data or false on failure
      */
     public function create_contact($contact_data) {
-        $access_token = $this->get_access_token();
-        
-        if (!$access_token) {
-            return false;
-        }
-        
-        $url = $this->api_base_url . '/crm/v1/contacts/';
-        
-        // Prepare the contact data according to SendPulse API format
         $body = array();
         
         if (!empty($contact_data['firstName'])) {
@@ -408,38 +430,22 @@ class AKS_SendPulse_API {
         }
         
         if (!empty($contact_data['phone'])) {
-            // Remove any non-numeric characters
             $phone = preg_replace('/[^0-9]/', '', $contact_data['phone']);
-            // Add "1" prefix for US numbers
             if (strlen($phone) === 10) {
                 $phone = '1' . $phone;
             }
             $body['phones'] = array($phone);
         }
         
-        // Make the API request
-        $response = wp_remote_post($url, array(
-            'headers' => array(
-                'Content-Type' => 'application/json',
-                'Authorization' => 'Bearer ' . $access_token
-            ),
-            'body' => json_encode($body),
-            'timeout' => 30
-        ));
+        $email = isset($contact_data['email']) ? $contact_data['email'] : '';
         
-        if (is_wp_error($response)) {
-            return false;
+        $result = $this->make_request('POST', '/crm/v1/contacts/', $body, 'Create contact', null, $email);
+        
+        if ($result['success']) {
+            return $result['data'];
         }
         
-        $response_code = wp_remote_retrieve_response_code($response);
-        $response_body = wp_remote_retrieve_body($response);
-        $data = json_decode($response_body, true);
-        
-        if ($response_code !== 200 && $response_code !== 201) {
-            return false;
-        }
-        
-        return $data;
+        return false;
     }
     
     /**
@@ -450,41 +456,17 @@ class AKS_SendPulse_API {
      * @return array|false Response data or false on failure
      */
     public function add_to_mailing_list($email, $list_id) {
-        $access_token = $this->get_access_token();
-        
-        if (!$access_token) {
-            return false;
-        }
-        
-        $url = $this->api_base_url . '/addressbooks/' . $list_id . '/emails';
-        
         $body = array(
             'emails' => array($email)
         );
         
-        $response = wp_remote_post($url, array(
-            'headers' => array(
-                'Content-Type' => 'application/json',
-                'Authorization' => 'Bearer ' . $access_token
-            ),
-            'body' => json_encode($body),
-            'timeout' => 30
-        ));
+        $result = $this->make_request('POST', '/addressbooks/' . $list_id . '/emails', $body, 'Add to mailing list', null, $email);
         
-        if (is_wp_error($response)) {
-            return false;
+        if ($result['success']) {
+            return $result['data'];
         }
         
-        $response_code = wp_remote_retrieve_response_code($response);
-        $response_body = wp_remote_retrieve_body($response);
-        
-        if ($response_code !== 200 && $response_code !== 201) {
-            return false;
-        }
-        
-        $data = json_decode($response_body, true);
-        
-        return $data;
+        return false;
     }
     
     /**
@@ -495,36 +477,13 @@ class AKS_SendPulse_API {
      * @return array|false Response data or false on failure
      */
     public function add_tag_to_contact($contact_id, $tag_id) {
-        $access_token = $this->get_access_token();
+        $result = $this->make_request('POST', '/crm/v1/contact-tags/' . $tag_id . '/contact/' . $contact_id, null, 'Add tag to contact');
         
-        if (!$access_token) {
-            return false;
+        if ($result['success']) {
+            return $result['data'];
         }
         
-        $url = $this->api_base_url . '/crm/v1/contact-tags/' . $tag_id . '/contact/' . $contact_id;
-        
-        $response = wp_remote_post($url, array(
-            'headers' => array(
-                'Content-Type' => 'application/json',
-                'Authorization' => 'Bearer ' . $access_token
-            ),
-            'timeout' => 30
-        ));
-        
-        if (is_wp_error($response)) {
-            return false;
-        }
-        
-        $response_code = wp_remote_retrieve_response_code($response);
-        $response_body = wp_remote_retrieve_body($response);
-        
-        if ($response_code !== 200 && $response_code !== 201) {
-            return false;
-        }
-        
-        $data = json_decode($response_body, true);
-        
-        return $data;
+        return false;
     }
     
     /**
@@ -535,41 +494,17 @@ class AKS_SendPulse_API {
      * @return array|false Response data or false on failure
      */
     public function add_note_to_contact($contact_id, $message) {
-        $access_token = $this->get_access_token();
-        
-        if (!$access_token) {
-            return false;
-        }
-        
-        $url = $this->api_base_url . '/crm/v1/contacts/' . $contact_id . '/comments';
-        
         $body = array(
             'message' => $message
         );
         
-        $response = wp_remote_post($url, array(
-            'headers' => array(
-                'Content-Type' => 'application/json',
-                'Authorization' => 'Bearer ' . $access_token
-            ),
-            'body' => json_encode($body),
-            'timeout' => 30
-        ));
+        $result = $this->make_request('POST', '/crm/v1/contacts/' . $contact_id . '/comments', $body, 'Add note to contact');
         
-        if (is_wp_error($response)) {
-            return false;
+        if ($result['success']) {
+            return $result['data'];
         }
         
-        $response_code = wp_remote_retrieve_response_code($response);
-        $response_body = wp_remote_retrieve_body($response);
-        
-        if ($response_code !== 200 && $response_code !== 201) {
-            return false;
-        }
-        
-        $data = json_decode($response_body, true);
-        
-        return $data;
+        return false;
     }
     
     /**
@@ -580,7 +515,6 @@ class AKS_SendPulse_API {
      * @return array|false Response data or false on failure
      */
     public function add_tags($contact_id, $tags) {
-        // Use the specific tag ID for "SMS opted-in" (55139)
         return $this->add_tag_to_contact($contact_id, 55139);
     }
     

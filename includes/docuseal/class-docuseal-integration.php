@@ -3,6 +3,7 @@
  * DocuSeal Integration Handler
  * Handles form submissions and creates DocuSeal documents
  * Now supports regeneration when student data changes
+ * Now includes API logging
  * 
  * UPDATED: Uses dynamic URLs instead of hardcoded /test/ paths
  */
@@ -18,6 +19,83 @@ class AKS_DocuSeal_Integration {
         
         // Allow custom DocuSeal tags in TinyMCE
         add_filter('tiny_mce_before_init', array($this, 'allow_custom_tags'));
+    }
+    
+    /**
+     * Get the API logger instance
+     */
+    private function get_logger() {
+        if (class_exists('AKS_API_Logger')) {
+            return AKS_API_Logger::get_instance();
+        }
+        return null;
+    }
+    
+    /**
+     * Make a DocuSeal API request with logging
+     */
+    private function make_api_request($endpoint, $payload, $api_token, $context = '', $user_email = '') {
+        $url = 'https://api.docuseal.com' . $endpoint;
+        $logger = $this->get_logger();
+        $log_data = null;
+        
+        // For logging, mask the token
+        $log_headers = array(
+            'Content-Type' => 'application/json',
+            'X-Auth-Token' => '[REDACTED]'
+        );
+        
+        if ($logger) {
+            $log_data = $logger->log_request(
+                'DocuSeal',
+                $url,
+                'POST',
+                $log_headers,
+                $payload,
+                $context,
+                null,
+                $user_email
+            );
+        }
+        
+        $curl = curl_init();
+        
+        curl_setopt_array($curl, array(
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_ENCODING => '',
+            CURLOPT_MAXREDIRS => 10,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+            CURLOPT_CUSTOMREQUEST => 'POST',
+            CURLOPT_POSTFIELDS => json_encode($payload),
+            CURLOPT_HTTPHEADER => array(
+                'Content-Type: application/json',
+                'X-Auth-Token: ' . $api_token
+            ),
+        ));
+        
+        $response = curl_exec($curl);
+        $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+        $curl_error = curl_error($curl);
+        
+        curl_close($curl);
+        
+        $success = ($http_code >= 200 && $http_code < 300);
+        
+        if ($logger && $log_data) {
+            $error_message = $curl_error ? $curl_error : ($success ? '' : 'HTTP ' . $http_code);
+            $logger->log_response($log_data, $http_code, array(), $response, $success, $error_message);
+        }
+        
+        return array(
+            'success' => $success,
+            'http_code' => $http_code,
+            'response' => $response,
+            'data' => json_decode($response, true),
+            'error' => $curl_error
+        );
     }
     
     /**
@@ -121,7 +199,7 @@ class AKS_DocuSeal_Integration {
 <p>Student Names and Birthdays:<br /><text-field style="width: 250px; height: 120px; display: inline-block;"></text-field></p>
 <p>Name of account owner: ACCOUNT-OWNER</p>
 <p>Account email: ACCOUNT-EMAIL</p>
-<p>Parent/Guardian\'s Name: PARENT-NAME<br />
+<p>Parent/Guardian\'s Name: <text-field style="width: 250px; height:50px; display: inline-block;"></text-field><br />
 Parent/Guardian\'s Email: PARENT-EMAIL</p>
 <signature-field style="width: 250px; height: 120px; display: inline-block;"></signature-field>';
     }
@@ -264,130 +342,90 @@ Parent/Guardian\'s Email: PARENT-EMAIL</p>
             $html_template = str_replace('PARENT-EMAIL', !empty($guardian_email) ? $guardian_email : '', $html_template);
             $html_template = str_replace('PARENT-NAME', !empty($guardian_full_name) ? $guardian_full_name : '', $html_template);
             
-            // Prepare the payload
-            $payload = array(
+            // Prepare the payload for creating template
+            $template_payload = array(
                 'html' => $html_template,
                 'folder_name' => 'Unsigned Templates',
                 'name' => $email . ' ' . $account_owner . ' ' . $template_name_suffix
             );
             
-            // Initialize cURL
-            $curl = curl_init();
+            // Create template via API
+            $template_result = $this->make_api_request(
+                '/templates/html',
+                $template_payload,
+                $api_token,
+                'Create template (' . $template_name_suffix . ')',
+                $email
+            );
             
-            curl_setopt_array($curl, array(
-                CURLOPT_URL => 'https://api.docuseal.com/templates/html',
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_ENCODING => '',
-                CURLOPT_MAXREDIRS => 10,
-                CURLOPT_TIMEOUT => 30,
-                CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-                CURLOPT_CUSTOMREQUEST => 'POST',
-                CURLOPT_POSTFIELDS => json_encode($payload),
-                CURLOPT_HTTPHEADER => array(
-                    'Content-Type: application/json',
-                    'X-Auth-Token: ' . $api_token
-                ),
-            ));
+            if (!$template_result['success']) {
+                return;
+            }
             
-            $response = curl_exec($curl);
-            $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-            $curl_error = curl_error($curl);
+            $response_data = $template_result['data'];
             
-            curl_close($curl);
+            if (!isset($response_data['id'])) {
+                return;
+            }
             
-            // Log the response for debugging
-            if ($http_code >= 200 && $http_code < 300) {
-                
-                // Decode the response to get the template ID
-                $response_data = json_decode($response, true);
-                
-                if (isset($response_data['id'])) {
-                    $template_id = $response_data['id'];
-                    
-                    // Get the redirect URL based on parent/guardian status (NOW DYNAMIC!)
-					$redirect_url = $this->get_redirect_url($is_parent);
-                    
-                    // Create a submission to send the document for signing
-                    $submission_payload = array(
-                        'template_id' => $template_id,
-                        'send_email' => !$is_parent,
-                        'completed_redirect_url' => $redirect_url,
-                        'submitters' => array(
-                            array(
-                                'role' => 'First Party',
-                                'email' => $send_to_email,
-                                'name' => $account_owner
-                            )
-                        )
-                    );
+            $template_id = $response_data['id'];
+            
+            // Get the redirect URL based on parent/guardian status
+            $redirect_url = $this->get_redirect_url($is_parent);
+            
+            // Create a submission to send the document for signing
+            $submission_payload = array(
+                'template_id' => $template_id,
+                'send_email' => !$is_parent,
+                'completed_redirect_url' => $redirect_url,
+                'submitters' => array(
+                    array(
+                        'role' => 'First Party',
+                        'email' => $send_to_email,
+                        'name' => $account_owner
+                    )
+                )
+            );
 
-                    // Initialize new cURL request for submission
-                    $curl_submission = curl_init();
-                    
-                    curl_setopt_array($curl_submission, array(
-                        CURLOPT_URL => 'https://api.docuseal.com/submissions',
-                        CURLOPT_RETURNTRANSFER => true,
-                        CURLOPT_ENCODING => '',
-                        CURLOPT_MAXREDIRS => 10,
-                        CURLOPT_TIMEOUT => 30,
-                        CURLOPT_FOLLOWLOCATION => true,
-                        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-                        CURLOPT_CUSTOMREQUEST => 'POST',
-                        CURLOPT_POSTFIELDS => json_encode($submission_payload),
-                        CURLOPT_HTTPHEADER => array(
-                            'Content-Type: application/json',
-                            'X-Auth-Token: ' . $api_token
-                        ),
-                    ));
-                    
-                    $submission_response = curl_exec($curl_submission);
-                    $submission_http_code = curl_getinfo($curl_submission, CURLINFO_HTTP_CODE);
-                    $submission_curl_error = curl_error($curl_submission);
-                    
-                    curl_close($curl_submission);
-                    
-                    // Log submission response
-                    if ($submission_http_code >= 200 && $submission_http_code < 300) {
-                        // Decode submission response
-                        $submission_data = json_decode($submission_response, true);
+            // Create submission via API
+            $submission_result = $this->make_api_request(
+                '/submissions',
+                $submission_payload,
+                $api_token,
+                'Create submission for signing',
+                $send_to_email
+            );
+            
+            if ($submission_result['success']) {
+                $submission_data = $submission_result['data'];
 
-                        // Validate structure and extract embed_src
-                        if (
-                            $user_id &&
-                            is_array($submission_data) &&
-                            isset($submission_data[0]['embed_src'])
-                        ) {
-                            $embed_src = $submission_data[0]['embed_src'];
+                // Validate structure and extract embed_src
+                if (
+                    $user_id &&
+                    is_array($submission_data) &&
+                    isset($submission_data[0]['embed_src'])
+                ) {
+                    $embed_src = $submission_data[0]['embed_src'];
 
-                            // Save embed_src to user meta
-                            update_user_meta($user_id, 'docuseal_url', esc_url_raw($embed_src));
-                        }
-
-                    } else {
-                        // Error logging for failed HTTP codes
-                        if ($submission_curl_error) {
-                        }
-                    }
-                    
-                    // Store submission response in entry meta (only if this is a real form submission, not regeneration)
-                    if (isset($entry['id'])) {
-                        gform_update_meta($entry['id'], 'docuseal_submission_response', $submission_response);
-                        gform_update_meta($entry['id'], 'docuseal_submission_http_code', $submission_http_code);
-                    }
+                    // Save embed_src to user meta
+                    update_user_meta($user_id, 'docuseal_url', esc_url_raw($embed_src));
                 }
-            } else {
-                if ($curl_error) {
+                
+                // Store submission response in entry meta (only if this is a real form submission, not regeneration)
+                if (isset($entry['id'])) {
+                    gform_update_meta($entry['id'], 'docuseal_submission_response', $submission_result['response']);
+                    gform_update_meta($entry['id'], 'docuseal_submission_http_code', $submission_result['http_code']);
                 }
             }
             
-            // Optional: Store the response in entry meta (only if this is a real form submission, not regeneration)
+            // Optional: Store the template response in entry meta (only if this is a real form submission, not regeneration)
             if (isset($entry['id'])) {
-                gform_update_meta($entry['id'], 'docuseal_response', $response);
-                gform_update_meta($entry['id'], 'docuseal_http_code', $http_code);
+                gform_update_meta($entry['id'], 'docuseal_response', $template_result['response']);
+                gform_update_meta($entry['id'], 'docuseal_http_code', $template_result['http_code']);
             }
             
         } catch (Exception $e) {
+            error_log('DocuSeal Integration Error: ' . $e->getMessage());
         }
     }
     

@@ -48,13 +48,25 @@ class AKS_Integration {
      * Initialize the plugin
      */
     public function init() {
-        // Check dependencies
+        // Load text domain
+        load_plugin_textdomain('aks-integration', false, dirname(plugin_basename(AKS_INTEGRATION_PLUGIN_FILE)) . '/languages');
+        
+        // Always load the API Logger
+        if (file_exists(AKS_INTEGRATION_PLUGIN_DIR . 'includes/class-api-logger.php')) {
+            require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/class-api-logger.php';
+            AKS_API_Logger::get_instance();
+        }
+        
+        // Always load the DocuSeal webhook handler (doesn't require Gravity Forms)
+        if (file_exists(AKS_INTEGRATION_PLUGIN_DIR . 'includes/docuseal/class-docuseal-webhook-handler.php')) {
+            require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/docuseal/class-docuseal-webhook-handler.php';
+            new AKS_DocuSeal_Webhook_Handler();
+        }
+        
+        // Check dependencies for remaining components
         if (!$this->check_dependencies()) {
             return;
         }
-        
-        // Load text domain
-        load_plugin_textdomain('aks-integration', false, dirname(plugin_basename(AKS_INTEGRATION_PLUGIN_FILE)) . '/languages');
         
         // Register ALL user meta in one place
         $this->register_user_meta();
@@ -95,6 +107,8 @@ class AKS_Integration {
      * Load plugin components
      */
     private function load_components() {
+        // Note: API Logger and DocuSeal Webhook Handler are loaded in init() before dependency check
+        
         // Load admin menu
         if (is_admin()) {
             require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/class-admin-menu.php';
@@ -120,18 +134,12 @@ class AKS_Integration {
             AKS_Student_Note_Sync::get_instance();
         }
         
-        // Load DocuSeal integration
+        // Load DocuSeal integration (webhook handler already loaded in init())
         if (file_exists(AKS_INTEGRATION_PLUGIN_DIR . 'includes/docuseal/class-docuseal-integration.php')) {
             require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/docuseal/class-docuseal-integration.php';
             
             if (is_admin()) {
                 require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/docuseal/class-docuseal-admin.php';
-            }
-            
-            // Load webhook handler
-            if (file_exists(AKS_INTEGRATION_PLUGIN_DIR . 'includes/docuseal/class-docuseal-webhook-handler.php')) {
-                require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/docuseal/class-docuseal-webhook-handler.php';
-                new AKS_DocuSeal_Webhook_Handler();
             }
             
             new AKS_DocuSeal_Integration();
@@ -143,6 +151,12 @@ class AKS_Integration {
 		require_once plugin_dir_path( __FILE__ ) . 'includes/class-aks-user-registration.php';
 
 
+        // Load CRM Sync Handler (syncs profile changes to SendPulse/Quo with retry queue)
+        if (file_exists(AKS_INTEGRATION_PLUGIN_DIR . 'includes/class-crm-sync-handler.php')) {
+            require_once AKS_INTEGRATION_PLUGIN_DIR . 'includes/class-crm-sync-handler.php';
+            AKS_CRM_Sync_Handler::get_instance();
+        }
+        
         // Load WooCommerce integration if WooCommerce is active
         if (class_exists('WooCommerce')) {
             if (file_exists(AKS_INTEGRATION_PLUGIN_DIR . 'includes/woocommerce/class-woocommerce-account-customization.php')) {

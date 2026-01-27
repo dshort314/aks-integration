@@ -498,7 +498,7 @@ class AKS_WooCommerce_Account_Customization {
         }
         
         // Also consider core endpoints
-        $core = ['orders', 'downloads', 'edit-address', 'payment-methods', 'edit-account', 'customer-logout'];
+        $core = ['orders', 'downloads', 'edit-address', 'payment-methods', 'edit-account', 'customer-logout', 'gift-cards'];
         foreach ($core as $slug) {
             if (isset($qv[$slug])) {
                 $has_endpoint = true;
